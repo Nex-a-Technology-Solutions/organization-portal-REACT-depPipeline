@@ -22,6 +22,21 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist'
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split vendor libraries into separate chunks
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          // Add other large libraries you're using based on your dependencies
+          // ui: ['@mui/material', '@emotion/react', '@emotion/styled'],
+          // utils: ['lodash', 'axios'],
+          // icons: ['lucide-react', '@heroicons/react']
+        }
+      }
+    },
+    // Increase chunk size warning limit if needed
+    chunkSizeWarningLimit: 1000
   }
 })
