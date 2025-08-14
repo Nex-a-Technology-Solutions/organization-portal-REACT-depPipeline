@@ -23,6 +23,7 @@ const statusColors = {
 
 // Helper function to safely access nested properties
 const safeGet = (obj, path, defaultValue = '') => {
+  if (!obj) return defaultValue;
   return path.split('.').reduce((current, key) => {
     return current && current[key] !== undefined ? current[key] : defaultValue;
   }, obj);
@@ -50,42 +51,48 @@ const formatDate = (dateString) => {
 };
 
 export default function RecentActivity({ projects, invoices, userRole }) {
+  console.log('RecentActivity received:', { projects, invoices, userRole }); // Debug log
+
   // Combine and sort recent items by date
   const recentItems = [];
 
-  // Add projects to recent items
+  // Add projects to recent items - using the EXACT field names from Projects component
   if (projects && Array.isArray(projects)) {
     projects.forEach(project => {
+      console.log('Processing project:', project); // Debug log
       recentItems.push({
         type: 'project',
         id: project.id,
-        title: safeGet(project, 'title') || safeGet(project, 'name') || 'Untitled Project',
-        subtitle: safeGet(project, 'client_name') || safeGet(project, 'client.name') || safeGet(project, 'client.company_name') || 'No Client',
-        status: safeGet(project, 'status') || 'active',
-        amount: safeGet(project, 'total_fee') || safeGet(project, 'budget'),
-        hours: safeGet(project, 'total_hours') || safeGet(project, 'hours_logged') || 0,
-        date: safeGet(project, 'updated_date') || safeGet(project, 'created_date') || safeGet(project, 'start_date'),
-        projectType: safeGet(project, 'project_type') || safeGet(project, 'type'),
-        description: safeGet(project, 'description'),
+        title: project.title || 'Untitled Project', // Direct access like in Projects component
+        subtitle: project.client_name || 'No Client', // Direct access like in Projects component
+        status: project.status || 'active',
+        amount: project.total_fee || project.budget,
+        hours: project.total_hours || project.hours_logged || 0,
+        date: project.updated_date || project.created_date || project.start_date,
+        projectType: project.project_type || project.type,
+        description: project.description,
       });
     });
   }
 
-  // Add invoices to recent items (for non-client users)
+  // Add invoices to recent items (for non-client users) - using exact field names from Invoices component
   if (userRole !== "client" && invoices && Array.isArray(invoices)) {
     invoices.forEach(invoice => {
+      console.log('Processing invoice:', invoice); // Debug log
       recentItems.push({
         type: 'invoice',
         id: invoice.id,
-        title: `Invoice #${safeGet(invoice, 'invoice_number') || safeGet(invoice, 'id')}`,
-        subtitle: safeGet(invoice, 'client_name') || safeGet(invoice, 'client.name') || safeGet(invoice, 'client.company_name') || 'No Client',
-        status: safeGet(invoice, 'status') || 'sent',
-        amount: safeGet(invoice, 'amount') || safeGet(invoice, 'total'),
-        date: safeGet(invoice, 'created_date') || safeGet(invoice, 'issue_date'),
-        dueDate: safeGet(invoice, 'due_date'),
+        title: `Invoice #${invoice.invoice_number || invoice.id}`, // Direct access like in Invoices component
+        subtitle: invoice.client_name || 'No Client', // Direct access like in Invoices component
+        status: invoice.status || 'sent',
+        amount: invoice.amount || invoice.total,
+        date: invoice.created_date || invoice.issue_date,
+        dueDate: invoice.due_date,
       });
     });
   }
+
+  console.log('Combined recent items before sorting:', recentItems); // Debug log
 
   // Sort by date (most recent first)
   recentItems.sort((a, b) => {
@@ -96,6 +103,8 @@ export default function RecentActivity({ projects, invoices, userRole }) {
 
   // Take only the first 8 items
   const displayItems = recentItems.slice(0, 8);
+  
+  console.log('Final display items:', displayItems); // Debug log
 
   return (
     <Card className="bg-white/80 backdrop-blur-sm border-slate-200/80 shadow-lg">
