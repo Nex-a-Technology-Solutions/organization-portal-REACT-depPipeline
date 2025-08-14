@@ -59,6 +59,8 @@ export default function Dashboard() {
     try {
       const userData = await User.me();
       setUser(userData);
+      
+      console.log("Dashboard: User data loaded:", userData); // Debug log
 
       let projectsData = [];
       let invoicesData = [];
@@ -75,27 +77,88 @@ export default function Dashboard() {
       }
 
       if (userData.access_level === "admin") {
-        [projectsData, invoicesData, timeEntriesData, notificationsData] = await Promise.all([
-          Project.list("-updated_date", 20),
-          Invoice.list("-created_date", 10),
-          TimeEntry.list("-created_date", 10),
-          Notification.filter({ is_read: false }, "-created_date")
-        ]);
+        console.log("Dashboard: Loading data for admin user"); // Debug log
+        
+        try {
+          [projectsData, invoicesData, timeEntriesData, notificationsData] = await Promise.all([
+            Project.list("-updated_date", 20),
+            Invoice.list("-created_date", 10),
+            TimeEntry.list("-created_date", 10),
+            Notification.filter({ is_read: false }, "-created_date")
+          ]);
+          
+          console.log("Dashboard: Admin data loaded - Projects:", projectsData.length, "Invoices:", invoicesData.length); // Debug log
+        } catch (error) {
+          console.error("Dashboard: Error loading admin data:", error);
+          
+          // Try loading individually if Promise.all fails
+          try {
+            projectsData = await Project.list("-updated_date", 20);
+            console.log("Dashboard: Individual project load - Projects:", projectsData.length); // Debug log
+          } catch (projectError) {
+            console.error("Dashboard: Error loading projects:", projectError);
+          }
+          
+          try {
+            invoicesData = await Invoice.list("-created_date", 10);
+            console.log("Dashboard: Individual invoice load - Invoices:", invoicesData.length); // Debug log
+          } catch (invoiceError) {
+            console.error("Dashboard: Error loading invoices:", invoiceError);
+          }
+          
+          try {
+            timeEntriesData = await TimeEntry.list("-created_date", 10);
+          } catch (timeError) {
+            console.error("Dashboard: Error loading time entries:", timeError);
+          }
+          
+          try {
+            notificationsData = await Notification.filter({ is_read: false }, "-created_date");
+          } catch (notificationError) {
+            console.error("Dashboard: Error loading notifications:", notificationError);
+          }
+        }
+        
       } else if (userData.access_level === "staff") {
-        const allTasks = await Task.filter({ assigned_to: userData.email }, "-created_date");
-        const projectIds = [...new Set(allTasks.map(task => task.project_id))];
+        console.log("Dashboard: Loading data for staff user"); // Debug log
         
-        const allProjects = await Project.list("-updated_date", 20);
-        projectsData = allProjects.filter(project => projectIds.includes(project.id));
+        try {
+          const allTasks = await Task.filter({ assigned_to: userData.email }, "-created_date");
+          const projectIds = [...new Set(allTasks.map(task => task.project_id))];
+          
+          const allProjects = await Project.list("-updated_date", 20);
+          projectsData = allProjects.filter(project => projectIds.includes(project.id));
+          
+          timeEntriesData = await TimeEntry.filter({ user_email: userData.email }, "-created_date", 10);
+          
+          // FIXED: Load invoices for staff users too (they should see invoices in recent activity)
+          invoicesData = await Invoice.list("-created_date", 10);
+          
+          console.log("Dashboard: Staff data loaded - Projects:", projectsData.length, "Invoices:", invoicesData.length); // Debug log
+        } catch (error) {
+          console.error("Dashboard: Error loading staff data:", error);
+        }
         
-        timeEntriesData = await TimeEntry.filter({ user_email: userData.email }, "-created_date", 10);
       } else if (userData.access_level === "client") {
-        const clientRecord = await Client.filter({ user_id: userData.id }, 1);
-        if (clientRecord.length > 0) {
-          projectsData = await Project.filter({ client_id: clientRecord[0].id }, "-updated_date", 20);
+        console.log("Dashboard: Loading data for client user"); // Debug log
+        
+        try {
+          const clientRecord = await Client.filter({ user_id: userData.id }, 1);
+          if (clientRecord.length > 0) {
+            projectsData = await Project.filter({ client_id: clientRecord[0].id }, "-updated_date", 20);
+            console.log("Dashboard: Client data loaded - Projects:", projectsData.length); // Debug log
+          } else {
+            console.log("Dashboard: No client record found for user"); // Debug log
+          }
+          
+          // Note: Clients don't need invoices in RecentActivity (handled by userRole check)
+        } catch (error) {
+          console.error("Dashboard: Error loading client data:", error);
         }
       }
 
+      console.log("Dashboard: Final data being set - Projects:", projectsData, "Invoices:", invoicesData); // Debug log
+      
       setProjects(projectsData);
       setInvoices(invoicesData);
       setTimeEntries(timeEntriesData);
