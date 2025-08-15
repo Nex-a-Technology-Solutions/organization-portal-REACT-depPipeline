@@ -3,8 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Clock, TrendingUp, Target, Calendar } from "lucide-react";
 
 export default function TimeStats({ timeEntries, projects, dateFilter }) {
-  const totalHours = timeEntries.reduce((sum, entry) => sum + entry.hours, 0);
-  const uniqueProjects = new Set(timeEntries.map(entry => entry.project_id)).size;
+  // Helper function to safely handle hours conversion
+  const safeHours = (value) => {
+    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const totalHours = timeEntries.reduce((sum, entry) => sum + safeHours(entry.hours), 0);
+  
+  // Fix: Use entry.project instead of entry.project_id, and filter out null/undefined values
+  const uniqueProjects = new Set(
+    timeEntries
+      .map(entry => entry.project || entry.project_id)
+      .filter(projectId => projectId != null)
+  ).size;
+  
   const avgHoursPerDay = timeEntries.length > 0 ? totalHours / Math.max(1, new Set(timeEntries.map(entry => entry.date)).size) : 0;
   
   const getDateLabel = () => {

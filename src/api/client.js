@@ -103,6 +103,10 @@ class BaseEntity {
     return this.getById(id);
   }
 
+  async patch(id, data) {
+    return this.partialUpdate(id, data);
+  }
+
   // List method with ordering support (used by frontend)
   async list(ordering = null, limit = null) {
     const params = {};
@@ -242,7 +246,23 @@ export const auth = {
 
   async updateProfile(profileData) {
     try {
-      const response = await apiClient.put('/auth/profile/update/', profileData);
+      // Remove problematic fields
+      const { username, role, access_level, is_active, ...dataToSend } = profileData;
+      
+      console.log('Sending profile update data:', dataToSend); // Debug log
+      
+      const response = await apiClient.put('/auth/profile/update/', dataToSend);
+      return response.data;
+    } catch (error) {
+      console.error('Profile update error:', error.response?.data || error);
+      throw error.response?.data || error;
+    }
+  },
+
+  // In your auth object in client.js, add this method:
+  async updateUser(userId, userData) {
+    try {
+      const response = await apiClient.patch(`/auth/users/${userId}/`, userData);
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
@@ -313,19 +333,55 @@ export const ProjectRequest = entities.ProjectRequest;
 
 // For Settings and other entities that might not have ViewSets yet
 export const Settings = {
-  async get() {
-    // Implement based on your settings endpoint
-    const response = await apiClient.get('/settings/');
-    return response.data;
-  },
-  async update(data) {
-    const response = await apiClient.put('/settings/', data);
-    return response.data;
-  },
-  // Alias for get to maintain compatibility
   async list() {
-    const response = await apiClient.get('/settings/');
-    return response.data.results || [response.data]; // Return as array for compatibility
+    try {
+      const response = await apiClient.get('/settings/');
+      return response.data; // This will be an array from your backend
+    } catch (error) {
+      console.error('Settings list error:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  async get() {
+    try {
+      const response = await apiClient.get('/settings/');
+      return response.data[0]; // Return first item since backend returns array
+    } catch (error) {
+      console.error('Settings get error:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  async create(data) {
+    try {
+      const response = await apiClient.put('/settings/', data);
+      return response.data;
+    } catch (error) {
+      console.error('Settings create error:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  async update(id, data) {
+    try {
+      // For settings, we always use PUT since there's typically only one settings record
+      const response = await apiClient.put('/settings/', data);
+      return response.data;
+    } catch (error) {
+      console.error('Settings update error:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  async patch(id, data) {
+    try {
+      const response = await apiClient.patch('/settings/', data);
+      return response.data;
+    } catch (error) {
+      console.error('Settings patch error:', error);
+      throw error.response?.data || error;
+    }
   }
 };
 

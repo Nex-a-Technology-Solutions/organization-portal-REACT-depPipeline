@@ -267,7 +267,7 @@ Make it self-contained HTML with inline CSS.`,
 
         // Option 1: Use the custom send_proposal endpoint (recommended)
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL || 'ttps://organization-portal-deppipeline.onrender.com/api'}/proposals/${proposalId}/send_proposal/`, {
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://organization-portal-deppipeline.onrender.com/api'}/proposals/${proposalId}/send_proposal/`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

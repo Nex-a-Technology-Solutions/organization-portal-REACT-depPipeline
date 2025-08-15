@@ -16,21 +16,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const stages = [
   { key: "discovery", name: "Discovery & Requirements" },
-  { key: "design", name: "Design & Architecture" },
+  { key: "planning", name: "Design & Architecture" },
   { key: "development", name: "Development & Configuration" },
   { key: "testing", name: "Testing & QA" },
   { key: "deployment", name: "Deployment & Implementation" },
-  { key: "training", name: "Training & Handoff" }
+  { key: "maintenance", name: "Training & Handoff" }
 ];
 
 export default function TimeEntryForm({ projects, tasks, user, onClose, onEntryAdded }) {
   const [formData, setFormData] = useState({
-    project_id: "",
-    task_id: "",
+    project: "",
+    task: "",
     hours: "",
     description: "",
     date: new Date().toISOString().split('T')[0],
-    stage: ""
+    stage: "development" // Default stage
   });
   const [loading, setLoading] = useState(false);
 
@@ -39,42 +39,102 @@ export default function TimeEntryForm({ projects, tasks, user, onClose, onEntryA
     setLoading(true);
 
     try {
-      await TimeEntry.create({
-        ...formData,
+      console.log('Creating time entry with data:', {
+        project: formData.project,
+        task: formData.task || null,
         user_email: user.email,
         hours: parseFloat(formData.hours),
-        task_id: formData.task_id || null
+        description: formData.description,
+        date: formData.date,
+        stage: formData.stage
+      });
+
+      await TimeEntry.create({
+        project: formData.project,
+        task: formData.task || null,
+        user_email: user.email,
+        hours: parseFloat(formData.hours),
+        description: formData.description,
+        date: formData.date,
+        stage: formData.stage
       });
 
       // Update task hours if task is selected
-      if (formData.task_id) {
-        const task = tasks.find(t => t.id === formData.task_id);
-        if (task) {
-          await Task.update(task.id, {
-            hours_logged: (task.hours_logged || 0) + parseFloat(formData.hours)
-          });
+      if (formData.task) {
+        try {
+          const task = tasks.find(t => t.id === formData.task);
+          if (task) {
+            const currentHours = typeof task.hours_logged === 'string' 
+              ? parseFloat(task.hours_logged) || 0 
+              : task.hours_logged || 0;
+            
+            const updatedHours = Number((currentHours + parseFloat(formData.hours)).toFixed(2));
+            
+            console.log('Updating task hours:', {
+              taskId: task.id,
+              currentHours,
+              addedHours: parseFloat(formData.hours),
+              updatedHours
+            });
+
+            await Task.patch(task.id, {
+              hours_logged: updatedHours
+            });
+            
+            console.log('Task hours updated successfully');
+          }
+        } catch (taskError) {
+          console.error("Error updating task hours (non-critical):", taskError);
         }
       }
 
       // Update project total hours
-      if (formData.project_id) {
-        const project = projects.find(p => p.id === formData.project_id);
-        if (project) {
-          await Project.update(project.id, {
-            total_hours: (project.total_hours || 0) + parseFloat(formData.hours)
-          });
+      if (formData.project) {
+        try {
+          const project = projects.find(p => p.id === formData.project);
+          if (project) {
+            const currentHours = typeof project.total_hours === 'string' 
+              ? parseFloat(project.total_hours) || 0 
+              : project.total_hours || 0;
+            
+            const updatedHours = Number((currentHours + parseFloat(formData.hours)).toFixed(2));
+            
+            console.log('Updating project hours:', {
+              projectId: project.id,
+              currentHours,
+              addedHours: parseFloat(formData.hours),
+              updatedHours
+            });
+
+            await Project.patch(project.id, {
+              total_hours: updatedHours
+            });
+            
+            console.log('Project hours updated successfully');
+          }
+        } catch (projectError) {
+          console.error("Error updating project hours (non-critical):", projectError);
         }
       }
 
       onEntryAdded();
     } catch (error) {
       console.error("Error creating time entry:", error);
+      if (error.response) {
+        console.error("Error response data:", error.response.data);
+      }
+      alert("Failed to create time entry. Please try again.");
     }
     setLoading(false);
   };
 
-  const projectTasks = tasks.filter(task => task.project_id === formData.project_id);
-  const selectedProject = projects.find(p => p.id === formData.project_id);
+  // Filter tasks for the selected project - handle both project and project_id fields
+  const projectTasks = tasks.filter(task => 
+    (task.project && task.project === formData.project) || 
+    (task.project_id && task.project_id === formData.project)
+  );
+  
+  const selectedProject = projects.find(p => p.id === formData.project);
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
@@ -84,14 +144,14 @@ export default function TimeEntryForm({ projects, tasks, user, onClose, onEntryA
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="project_id">Project</Label>
+            <Label htmlFor="project">Project</Label>
             <Select 
-              value={formData.project_id} 
+              value={formData.project} 
               onValueChange={(value) => setFormData({ 
                 ...formData, 
-                project_id: value, 
-                task_id: "", 
-                stage: projects.find(p => p.id === value)?.current_stage || ""
+                project: value, 
+                task: "", // Reset task when project changes
+                stage: projects.find(p => p.id === value)?.current_stage || "development"
               })}
             >
               <SelectTrigger>
@@ -108,16 +168,16 @@ export default function TimeEntryForm({ projects, tasks, user, onClose, onEntryA
           </div>
 
           <div>
-            <Label htmlFor="task_id">Task (Optional)</Label>
+            <Label htmlFor="task">Task (Optional)</Label>
             <Select 
-              value={formData.task_id} 
-              onValueChange={(value) => setFormData({ ...formData, task_id: value })}
+              value={formData.task} 
+              onValueChange={(value) => setFormData({ ...formData, task: value === "none" ? "" : value })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select task" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={null}>No specific task</SelectItem>
+                <SelectItem value="none">No specific task</SelectItem>
                 {projectTasks.map((task) => (
                   <SelectItem key={task.id} value={task.id}>
                     {task.title}

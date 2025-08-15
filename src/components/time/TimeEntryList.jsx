@@ -14,6 +14,12 @@ const stageColors = {
 };
 
 export default function TimeEntryList({ timeEntries, projects, tasks }) {
+  // Helper function to safely handle hours conversion
+  const safeHours = (value) => {
+    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
   if (timeEntries.length === 0) {
     return (
       <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg">
@@ -36,16 +42,39 @@ export default function TimeEntryList({ timeEntries, projects, tasks }) {
       <CardContent>
         <div className="space-y-3">
           {timeEntries.map((entry) => {
-            const project = projects.find(p => p.id === entry.project_id);
-            const task = tasks.find(t => t.id === entry.task_id);
+            // First try to get project title from the serializer field
+            let projectTitle = entry.project_title;
+            
+            // If not available, try to find the project in the projects array
+            if (!projectTitle) {
+              const project = projects.find(p => 
+                p.id === entry.project || 
+                p.id === entry.project_id
+              );
+              projectTitle = project?.title;
+            }
+            
+            // First try to get task title from the serializer field
+            let taskTitle = entry.task_title;
+            
+            // If not available, try to find the task in the tasks array
+            if (!taskTitle && entry.task) {
+              const task = tasks.find(t => 
+                t.id === entry.task || 
+                t.id === entry.task_id
+              );
+              taskTitle = task?.title;
+            }
             
             return (
               <div key={entry.id} className="p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex-1">
-                    <h4 className="font-semibold text-slate-900">{project?.title || "Unknown Project"}</h4>
-                    {task && (
-                      <p className="text-sm text-slate-600">{task.title}</p>
+                    <h4 className="font-semibold text-slate-900">
+                      {projectTitle || "Unknown Project"}
+                    </h4>
+                    {taskTitle && (
+                      <p className="text-sm text-slate-600">{taskTitle}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
@@ -53,7 +82,7 @@ export default function TimeEntryList({ timeEntries, projects, tasks }) {
                       {entry.stage?.replace('_', ' ')}
                     </Badge>
                     <div className="text-right">
-                      <div className="font-bold text-slate-900">{entry.hours.toFixed(2)}h</div>
+                      <div className="font-bold text-slate-900">{safeHours(entry.hours).toFixed(2)}h</div>
                       <div className="text-xs text-slate-500 flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         {format(new Date(entry.date), "MMM d")}

@@ -29,7 +29,7 @@ export default function TimeTracking() {
   const [tasks, setTasks] = useState([]);
   const [timeEntries, setTimeEntries] = useState([]);
   const [showAddEntry, setShowAddEntry] = useState(false);
-  const [selectedProject, setSelectedProject] = useState("");
+  const [selectedProject, setSelectedProject] = useState("all");
   const [dateFilter, setDateFilter] = useState("this_week");
   const [loading, setLoading] = useState(true);
 
@@ -66,15 +66,74 @@ export default function TimeTracking() {
         return;
       }
 
-      const [projectsData, tasksData, timeEntriesData] = await Promise.all([
-        Project.filter({ status: "active" }),
-        Task.list("-created_date"),
-        TimeEntry.list("-created_date", 50)
-      ]);
+      // Load projects first
+      let projectsData;
+      if (userData.role === "staff" || userData.access_level === "staff") {
+        // For staff users, get projects they have tasks assigned to
+        const taskFilters = [
+          { assigned_to: userData.email },
+          { assigned_to: userData.id },
+          { assignee: userData.email },
+          { assignee: userData.id },
+          { assigned_user: userData.id }
+        ];
+        
+        let allTasks = [];
+        
+        // Try each filter until one works
+        for (const filter of taskFilters) {
+          try {
+            allTasks = await Task.filter(filter, "-created_date");
+            if (allTasks.length > 0) break;
+          } catch (error) {
+            continue;
+          }
+        }
+        
+        const projectIds = [...new Set(allTasks.map(task => task.project_id || task.project))];
+        let allProjects = await Project.list("-updated_date");
+        projectsData = allProjects.filter(project => projectIds.includes(project.id));
+      } else {
+        // For admin users, get all active projects
+        projectsData = await Project.filter({ status: "active" });
+      }
+
+      // Load all tasks - we'll filter them in the UI based on selected project and user permissions
+      let tasksData;
+      if (userData.role === "staff" || userData.access_level === "staff") {
+        // For staff, only get tasks assigned to them
+        const taskFilters = [
+          { assigned_to: userData.email },
+          { assigned_to: userData.id },
+          { assignee: userData.email },
+          { assignee: userData.id },
+          { assigned_user: userData.id }
+        ];
+        
+        for (const filter of taskFilters) {
+          try {
+            tasksData = await Task.filter(filter, "-created_date");
+            if (tasksData.length > 0) break;
+          } catch (error) {
+            continue;
+          }
+        }
+        if (!tasksData) tasksData = [];
+      } else {
+        // For admin, get all tasks
+        tasksData = await Task.list("-created_date");
+      }
+
+      // Load time entries
+      const timeEntriesData = await TimeEntry.list("-created_date", 50);
 
       setProjects(projectsData);
       setTasks(tasksData);
       setTimeEntries(timeEntriesData);
+      
+      console.log('Loaded projects:', projectsData.length);
+      console.log('Loaded tasks:', tasksData.length);
+      console.log('User role/access:', userData.role, userData.access_level);
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -100,48 +159,123 @@ export default function TimeTracking() {
     setIsRunning(false);
   };
 
-  const stopTimer = async () => {
-    if (currentTime === 0) return;
+const stopTimer = async () => {
+  if (currentTime === 0) return;
+  
+  setIsRunning(false);
+  
+  try {
+    const project = projects.find(p => p.id === timerProject);
+    const task = tasks.find(t => t.id === timerTask);
     
-    setIsRunning(false);
+    // Calculate hours and round to 2 decimal places
+    const hoursWorked = Math.round((currentTime / 3600) * 100) / 100;
     
-    try {
-      const project = projects.find(p => p.id === timerProject);
-      const task = tasks.find(t => t.id === timerTask);
-      
-      await TimeEntry.create({
-        project_id: timerProject,
-        task_id: timerTask || null,
-        user_email: user.email,
-        hours: currentTime / 3600,
-        description: timerDescription || `Timer session - ${project?.title}`,
-        date: new Date().toISOString().split('T')[0],
-        stage: project?.current_stage || "development"
-      });
+    // Ensure minimum time entry (1 minute = 0.02 hours)
+    const minimumHours = 0.02;
+    const finalHours = hoursWorked < minimumHours ? minimumHours : hoursWorked;
+    
+    console.log('Timer details:', {
+      currentTime,
+      hoursWorked,
+      finalHours,
+      minimumHours
+    });
+    
+    const timeEntryData = {
+      project: timerProject,
+      task: timerTask === "none" ? null : timerTask,
+      user_email: user.email,
+      hours: finalHours,
+      description: timerDescription || `Timer session - ${project?.title}`,
+      date: new Date().toISOString().split('T')[0],
+      stage: project?.current_stage && ["discovery", "planning", "development", "testing", "deployment", "maintenance"].includes(project.current_stage) 
+        ? project.current_stage 
+        : "development"
+    };
+    
+    console.log("Creating time entry with data:", timeEntryData);
+    
+    // Create the time entry first
+    await TimeEntry.create(timeEntryData);
+    console.log("Time entry created successfully");
 
-      // Update task hours if task is selected
-      if (task) {
-        await Task.update(task.id, {
-          hours_logged: (task.hours_logged || 0) + (currentTime / 3600)
+    // Update task hours if task is selected
+    if (task && timerTask !== "none") {
+      try {
+        const currentHours = typeof task.hours_logged === 'string' 
+          ? parseFloat(task.hours_logged) || 0 
+          : task.hours_logged || 0;
+        
+        const updatedHours = Number((currentHours + finalHours).toFixed(2));
+        
+        console.log('Updating task hours:', {
+          taskId: task.id,
+          currentHours,
+          finalHours,
+          updatedHours
         });
-      }
-
-      // Update project total hours
-      if (project) {
-        await Project.update(project.id, {
-          total_hours: (project.total_hours || 0) + (currentTime / 3600)
+        
+        await Task.patch(task.id, {
+          hours_logged: updatedHours
         });
+        
+        console.log("Task hours updated successfully");
+      } catch (taskError) {
+        console.error("Error updating task hours (non-critical):", taskError);
+        if (taskError.response) {
+          console.error("Task update error data:", taskError.response.data);
+        }
       }
-
-      setCurrentTime(0);
-      setTimerProject("");
-      setTimerTask("");
-      setTimerDescription("");
-      loadData();
-    } catch (error) {
-      console.error("Error saving time entry:", error);
     }
-  };
+
+    // Update project total hours
+    if (project) {
+      try {
+        const currentHours = typeof project.total_hours === 'string' 
+          ? parseFloat(project.total_hours) || 0 
+          : project.total_hours || 0;
+        
+        const updatedHours = Number((currentHours + finalHours).toFixed(2));
+        
+        console.log('Updating project hours:', {
+          projectId: project.id,
+          currentHours,
+          finalHours,
+          updatedHours
+        });
+        
+        await Project.patch(project.id, {
+          total_hours: updatedHours
+        });
+        
+        console.log("Project hours updated successfully");
+      } catch (projectError) {
+        console.error("Error updating project hours (non-critical):", projectError);
+        if (projectError.response) {
+          console.error("Project update error data:", projectError.response.data);
+        }
+      }
+    }
+
+    // Reset timer state
+    setCurrentTime(0);
+    setTimerProject("");
+    setTimerTask("");
+    setTimerDescription("");
+    
+    // Reload data to show new entry
+    loadData();
+    
+  } catch (error) {
+    console.error("Error saving time entry:", error);
+    if (error.response) {
+      console.error("Error response data:", error.response.data);
+      console.error("Error status:", error.response.status);
+    }
+    alert("Failed to save time entry. Please try again.");
+  }
+};
 
   const handleEntryAdded = () => {
     setShowAddEntry(false);
@@ -151,8 +285,10 @@ export default function TimeTracking() {
   const getFilteredEntries = () => {
     let filtered = timeEntries;
     
-    if (selectedProject) {
-      filtered = filtered.filter(entry => entry.project_id === selectedProject);
+    if (selectedProject && selectedProject !== "all") {
+      filtered = filtered.filter(entry => 
+        entry.project === selectedProject || entry.project_id === selectedProject
+      );
     }
 
     const now = new Date();
@@ -280,13 +416,16 @@ export default function TimeTracking() {
                     <SelectValue placeholder="Select task" />
                   </SelectTrigger>
                   <SelectContent>
-                    {tasks
-                      .filter(task => task.project_id === timerProject)
-                      .map((task) => (
+                    <SelectItem value="none">No specific task</SelectItem>
+                    {(() => {
+                      const filteredTasks = tasks.filter(task => (task.project_id || task.project) === timerProject);
+                      console.log('Filtering tasks for project:', timerProject, 'Found:', filteredTasks.length);
+                      return filteredTasks.map((task) => (
                         <SelectItem key={task.id} value={task.id}>
                           {task.title}
                         </SelectItem>
-                      ))}
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
               </div>
@@ -317,7 +456,7 @@ export default function TimeTracking() {
               <SelectValue placeholder="All projects" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={null}>All Projects</SelectItem>
+              <SelectItem value="all">All Projects</SelectItem>
               {projects.map((project) => (
                 <SelectItem key={project.id} value={project.id}>
                   {project.title}

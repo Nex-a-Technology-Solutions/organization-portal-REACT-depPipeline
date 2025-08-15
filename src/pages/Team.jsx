@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from "react";
 import { User } from "@/api/entities";
-import { UserInvitation } from "@/api/entities";
+import { UserInvitation} from "@/api/entities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,10 +48,11 @@ export default function Team() {
 
   const handleRoleUpdate = async (userId, newRole) => {
     try {
-      await User.update(userId, { access_level: newRole });
-      loadData();
+      await User.updateUser(userId, { access_level: newRole });
+      loadData(); // Reload the data after successful update
     } catch (error) {
       console.error("Error updating user role:", error);
+      alert("Failed to update user role. Please try again.");
     }
   };
 
