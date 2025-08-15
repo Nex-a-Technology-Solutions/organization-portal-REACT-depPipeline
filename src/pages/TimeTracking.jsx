@@ -130,10 +130,7 @@ export default function TimeTracking() {
       setProjects(projectsData);
       setTasks(tasksData);
       setTimeEntries(timeEntriesData);
-      
-      console.log('Loaded projects:', projectsData.length);
-      console.log('Loaded tasks:', tasksData.length);
-      console.log('User role/access:', userData.role, userData.access_level);
+
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -174,13 +171,7 @@ const stopTimer = async () => {
     // Ensure minimum time entry (1 minute = 0.02 hours)
     const minimumHours = 0.02;
     const finalHours = hoursWorked < minimumHours ? minimumHours : hoursWorked;
-    
-    console.log('Timer details:', {
-      currentTime,
-      hoursWorked,
-      finalHours,
-      minimumHours
-    });
+
     
     const timeEntryData = {
       project: timerProject,
@@ -198,7 +189,6 @@ const stopTimer = async () => {
     
     // Create the time entry first
     await TimeEntry.create(timeEntryData);
-    console.log("Time entry created successfully");
 
     // Update task hours if task is selected
     if (task && timerTask !== "none") {
@@ -209,18 +199,11 @@ const stopTimer = async () => {
         
         const updatedHours = Number((currentHours + finalHours).toFixed(2));
         
-        console.log('Updating task hours:', {
-          taskId: task.id,
-          currentHours,
-          finalHours,
-          updatedHours
-        });
         
         await Task.patch(task.id, {
           hours_logged: updatedHours
         });
         
-        console.log("Task hours updated successfully");
       } catch (taskError) {
         console.error("Error updating task hours (non-critical):", taskError);
         if (taskError.response) {
@@ -237,13 +220,6 @@ const stopTimer = async () => {
           : project.total_hours || 0;
         
         const updatedHours = Number((currentHours + finalHours).toFixed(2));
-        
-        console.log('Updating project hours:', {
-          projectId: project.id,
-          currentHours,
-          finalHours,
-          updatedHours
-        });
         
         await Project.patch(project.id, {
           total_hours: updatedHours
@@ -419,7 +395,6 @@ const stopTimer = async () => {
                     <SelectItem value="none">No specific task</SelectItem>
                     {(() => {
                       const filteredTasks = tasks.filter(task => (task.project_id || task.project) === timerProject);
-                      console.log('Filtering tasks for project:', timerProject, 'Found:', filteredTasks.length);
                       return filteredTasks.map((task) => (
                         <SelectItem key={task.id} value={task.id}>
                           {task.title}

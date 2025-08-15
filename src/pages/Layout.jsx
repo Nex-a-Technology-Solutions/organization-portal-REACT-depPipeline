@@ -290,8 +290,6 @@ if (!userData.access_level) {
     window.location.href = '/login';
   };
   
-  console.log("User access level:", user?.access_level);
-  console.log("Navigation roles:", navigationItems.map(i => i.roles));
   const filteredNavItems = navigationItems.filter(item => 
     user?.access_level && item.roles.includes(user.access_level)
   );
