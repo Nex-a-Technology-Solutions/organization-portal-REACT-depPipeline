@@ -26,6 +26,8 @@ import ThankYou from "./ThankYou";
 
 import UserInviteAcceptance from "./userInviteAcceptance";
 
+import Register from "./Register.jsx";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -105,6 +107,8 @@ function PagesContent() {
 
                 <Route path="/userInviteAcceptance" element={<UserInviteAcceptance />} />
                 
+                <Route path="/Register" element={<Register />} />
+
             </Routes>
         </Layout>
     );
