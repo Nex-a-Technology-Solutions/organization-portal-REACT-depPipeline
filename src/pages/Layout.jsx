@@ -137,24 +137,32 @@ export default function Layout({ children, currentPageName }) {
 
   const loadUser = async () => {
     try {
-      // Check if user is authenticated first
-      if (!User.isAuthenticated()) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-
+      // Always try to load user data first to show loading screen
       // Check if we're in impersonation mode
       const isImpersonating = localStorage.getItem('is_impersonating') === 'true';
       const impersonatedUser = JSON.parse(localStorage.getItem('impersonated_user') || 'null');
       
       let userData;
+      
       if (isImpersonating && impersonatedUser) {
         // Use the impersonated user data
         userData = impersonatedUser;
       } else {
-        // Get the actual current user
-        userData = await User.me();
+        // Try to get the actual current user - this will show loading while we wait
+        try {
+          userData = await User.me();
+        } catch (userError) {
+          // If User.me() fails, then check authentication status
+          if (!User.isAuthenticated()) {
+            // Wait a moment to show loading screen even on quick auth failures
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            setUser(null);
+            setLoading(false);
+            return;
+          }
+          // If authenticated but User.me() failed, rethrow the error
+          throw userError;
+        }
       }
       
       // Load settings for branding
