@@ -320,6 +320,86 @@ if (!userData.access_level) {
     }
   ` : '';
 
+  // Loading screen styles with modern loader
+  const loaderStyles = `
+    .loader-5 {
+      animation: rotate 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      height: 60px;
+      width: 60px;
+      filter: drop-shadow(0 4px 12px rgba(114, 253, 103, 0.25));
+    }
+
+    .loader-5:before,
+    .loader-5:after {
+      border-radius: 50%;
+      content: "";
+      display: block;
+      height: 24px;
+      width: 24px;
+    }
+    
+    .loader-5:before {
+      animation: ball1 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      background: linear-gradient(135deg, #72FD67, #5DE055);
+      box-shadow: 36px 0 0 rgba(114, 253, 103, 0.2);
+      margin-bottom: 12px;
+      filter: drop-shadow(0 2px 8px rgba(114, 253, 103, 0.4));
+    }
+    
+    .loader-5:after {
+      animation: ball2 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      background: linear-gradient(135deg, #5DE055, #72FD67);
+      box-shadow: 36px 0 0 rgba(93, 224, 85, 0.2);
+      filter: drop-shadow(0 2px 8px rgba(93, 224, 85, 0.4));
+    }
+
+    @keyframes rotate {
+      0% {
+        transform: rotate(0deg) scale(0.9);
+      }
+      50% {
+        transform: rotate(360deg) scale(1.1);
+      }
+      100% {
+        transform: rotate(720deg) scale(0.9);
+      }
+    }
+
+    @keyframes ball1 {
+      0% {
+        box-shadow: 36px 0 0 rgba(114, 253, 103, 0.2);
+        transform: translate(0, 0);
+      }
+      50% {
+        box-shadow: 0 0 0 rgba(114, 253, 103, 0.6);
+        margin-bottom: 0;
+        transform: translate(18px, 18px) scale(1.2);
+      }
+      100% {
+        box-shadow: 36px 0 0 rgba(114, 253, 103, 0.2);
+        margin-bottom: 12px;
+        transform: translate(0, 0);
+      }
+    }
+
+    @keyframes ball2 {
+      0% {
+        box-shadow: 36px 0 0 rgba(93, 224, 85, 0.2);
+        transform: translate(0, 0);
+      }
+      50% {
+        box-shadow: 0 0 0 rgba(93, 224, 85, 0.6);
+        margin-top: -24px;
+        transform: translate(18px, 18px) scale(1.2);
+      }
+      100% {
+        box-shadow: 36px 0 0 rgba(93, 224, 85, 0.2);
+        margin-top: 0;
+        transform: translate(0, 0);
+      }
+    }
+  `;
+
   if (loading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'dark-mode' : 'bg-[#F2F2F2]'}`}>
@@ -330,9 +410,10 @@ if (!userData.access_level) {
               font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, sans-serif;
             }
             ${darkModeStyles}
+            ${loaderStyles}
           `}
         </style>
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E1E1D]"></div>
+        <div className="loader-5"></div>
       </div>
     );
   }
@@ -355,8 +436,31 @@ if (!userData.access_level) {
     );
   }
 
-  // If authentication is required but user is not logged in
-  if (!user) {
+  // Show loading screen while authentication is being processed
+  if (authRequired && !user && !loading) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center text-center p-4 ${isDarkMode ? 'dark-mode' : 'bg-gradient-to-br from-[#F2F2F2] to-gray-100'}`}>
+        <style>
+          {`
+            @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200;12..96,300;12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&display=swap');
+            * {
+              font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, sans-serif;
+            }
+            ${darkModeStyles}
+            ${loaderStyles}
+          `}
+        </style>
+        <div className="loader-5 mb-8"></div>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#1E1E1D] mb-3">Setting up your account...</h1>
+        <p className="text-gray-600 mt-3 mb-8 max-w-md text-sm sm:text-base font-medium px-4">
+          Please wait while we verify your access and prepare your dashboard.
+        </p>
+      </div>
+    );
+  }
+
+  // If authentication is required but user is not logged in after all processing
+  if (authRequired && !user) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center text-center p-4 ${isDarkMode ? 'dark-mode' : 'bg-gradient-to-br from-[#F2F2F2] to-gray-100'}`}>
         <style>
