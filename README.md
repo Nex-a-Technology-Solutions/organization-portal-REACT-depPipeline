@@ -1,20 +1,39 @@
-# Base44 App
+Frontend Deployment Pipeline Guidelines
 
+This repository is integrated with Vercel for automated deployments of the React frontend application.
 
-This app was created automatically by Base44.
-It's a Vite+React app that communicates with the Base44 API.
+🚀 Deployment Overview
 
-## Running the app
+Hosting: Vercel (Production environment).
 
-```bash
-npm install
-npm run dev
-```
+CI/CD: All commits to the main branch trigger an automatic build and deployment to production.
 
-## Building the app
+Preview Deployments: Pull requests automatically generate preview builds for testing before merging.
 
-```bash
-npm run build
-```
+⚠️ Important Rules
 
-For more information and support, please contact Base44 support at app@base44.com.
+Do not push unreviewed code to the main branch.
+
+All code changes must go through a pull request.
+
+PRs require review and approval before merging.
+
+Ensure all updates are:
+
+Tested locally (npm run build and npm start).
+
+Checked for UI/UX consistency.
+
+Compatible with backend API changes.
+
+Avoid committing secrets, API keys, or sensitive configuration files.
+
+Use Vercel’s Environment Variables feature.
+
+🛠 Deployment Workflow
+
+Local Development:
+
+Create a new branch for your feature or bug fix.
+
+Run locally using:
