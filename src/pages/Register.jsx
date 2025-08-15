@@ -58,6 +58,15 @@ export default function Register() {
 
       await auth.register(userData);
 
+      // Clear any invalid tokens that might have been stored during registration
+      localStorage.removeItem('token');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      
+      // You can also clear all auth-related data if needed
+      // localStorage.clear(); // Use this if you want to clear everything
+
       setSuccess("Account created successfully! Redirecting to login...");
       
       // Redirect to login after 2 seconds
