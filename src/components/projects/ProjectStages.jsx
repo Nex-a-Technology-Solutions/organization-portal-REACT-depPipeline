@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Task, Project } from "@/api/entities"; // Import Task and Project entities
 import { 
   CheckCircle2, 
   Circle, 
@@ -27,8 +28,48 @@ export default function ProjectStages({
   onStageComplete, 
   onCreateTask, 
   userRole,
-  invoiceLoading 
+  invoiceLoading,
+  onTasksUpdated, // Add this prop to refresh tasks after status change
+  onProjectUpdated // Add this prop to refresh project after completion
 }) {
+  // Add task status change handler
+  const handleTaskStatusChange = async (taskId, currentStatus) => {
+    try {
+      const newStatus = currentStatus === "completed" ? "pending" : "completed";
+      
+      // Update completion date when marking as completed
+      const updateData = {
+        status: newStatus,
+        ...(newStatus === "completed" && { completion_date: new Date().toISOString().split('T')[0] })
+      };
+      
+      await Task.patch(taskId, updateData);
+      
+      // Call callback to refresh tasks in parent component
+      if (onTasksUpdated) {
+        onTasksUpdated();
+      }
+    } catch (error) {
+      console.error("Error updating task status:", error);
+      // You might want to show a toast notification here
+    }
+  };
+
+  // Add project completion handler
+  const handleProjectComplete = async (project) => {
+    try {
+      await Project.patch(project.id, { status: 'completed' });
+      
+      // Call callback to refresh project in parent component
+      if (onProjectUpdated) {
+        onProjectUpdated();
+      }
+    } catch (error) {
+      console.error("Error completing project:", error);
+      // You might want to show a toast notification here
+    }
+  };
+
   const getStageStatus = (stageKey) => {
     if (project.stage_completion?.[stageKey]) return "completed";
     if (project.current_stage === stageKey) return "active";
@@ -42,6 +83,11 @@ export default function ProjectStages({
   const getStageHours = (stageKey) => {
     return getStageTasks(stageKey).reduce((sum, task) => sum + (task.hours_logged || 0), 0);
   };
+
+  // Check if all stages are completed
+  const allStagesCompleted = stages.every(stage => 
+    project.stage_completion?.[stage.key] === true
+  );
 
   return (
     <Card className="bg-white/80 backdrop-blur-sm border-slate-200 shadow-lg">
@@ -148,11 +194,21 @@ export default function ProjectStages({
                           {stageTasks.slice(0, 3).map((task) => (
                             <div key={task.id} className="flex items-center justify-between text-sm">
                               <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${
-                                  task.status === "completed" ? "bg-green-500" :
-                                  task.status === "in_progress" ? "bg-blue-500" :
-                                  "bg-slate-300"
-                                }`} />
+                                {/* Task completion checkbox - only show for non-client users */}
+                                {userRole !== "client" ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={task.status === "completed"}
+                                    onChange={() => handleTaskStatusChange(task.id, task.status)}
+                                    className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-2"
+                                  />
+                                ) : (
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    task.status === "completed" ? "bg-green-500" :
+                                    task.status === "in_progress" ? "bg-blue-500" :
+                                    "bg-slate-300"
+                                  }`} />
+                                )}
                                 <span className={task.status === "completed" ? "text-slate-500 line-through" : "text-slate-700"}>
                                   {task.title}
                                 </span>
@@ -186,6 +242,24 @@ export default function ProjectStages({
               </div>
             );
           })}
+
+          {/* Project completion section - moved outside the map */}
+          {userRole !== "client" && allStagesCompleted && project.status !== 'completed' && (
+            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h4 className="font-semibold text-green-900">Ready to Complete Project</h4>
+                  <p className="text-sm text-green-700">All stages completed. Mark project as finished?</p>
+                </div>
+                <Button 
+                  onClick={() => handleProjectComplete(project)}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  Complete Project
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
