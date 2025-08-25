@@ -290,7 +290,7 @@ setShowEmailPreview(true);
 
       // Update proposal status
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api'}/proposals/${proposalId}/send_proposal/`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://organization-portal-deppipeline.onrender.com/api'}/proposals/${proposalId}/send_proposal/`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
