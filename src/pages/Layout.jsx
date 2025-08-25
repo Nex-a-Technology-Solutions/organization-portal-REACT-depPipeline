@@ -95,7 +95,7 @@ const navigationItems = [
 ];
 
 // Define public routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/Register', '/userInviteAcceptance', '/forgot-password', '/reset-password'];
+const PUBLIC_ROUTES = ['/login', '/Register', '/clientProposalAcceptance', '/userInviteAcceptance', '/forgot-password', '/reset-password'];
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();

@@ -54,47 +54,130 @@ export default function InviteUserDialog({ onClose, onUserInvited }) {
       // Get company settings for branding
       const settingsData = await Settings.list();
       const settings = settingsData.length > 0 ? settingsData[0] : {
-        company_name: "Nex-a Portal"
+        company_name: "Nex-a Portal",
+        company_logo_url: "",
+        primary_color: "#72FD67",
+        secondary_color: "#1E1E1D",
+        accent_color: "#F2F2F2",
+        email_theme: "light",
       };
       
       // Then send the email
       const appUrl = window.location.origin;
       
-      // In your handleSubmit function, replace the email body section:
+      // Create HTML email body matching the proposal format
+      const htmlEmailBody = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: ${settings.accent_color}; }
+            .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+            .header { text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid ${settings.primary_color}; }
+            .logo { max-width: 200px; height: auto; margin-bottom: 20px; }
+            .company-name { font-size: 28px; font-weight: bold; color: ${settings.secondary_color}; margin: 0; }
+            .invitation-title { font-size: 24px; color: ${settings.primary_color}; margin: 30px 0 20px 0; text-align: center; }
+            .greeting { font-size: 18px; color: ${settings.secondary_color}; margin: 20px 0; }
+            .section { margin: 30px 0; }
+            .section h3 { color: ${settings.secondary_color}; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+            .highlight-box { background: ${settings.accent_color}; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .role-badge { display: inline-block; background: ${settings.primary_color}; color: ${settings.secondary_color}; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 14px; margin: 10px 0; }
+            .personal-message { background: #f8f9fa; padding: 20px; border-left: 4px solid ${settings.primary_color}; margin: 20px 0; font-style: italic; }
+            .accept-btn { display: inline-block; background: ${settings.primary_color}; color: ${settings.secondary_color}; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 18px; margin: 20px 0; }
+            .accept-btn:hover { opacity: 0.9; }
+            .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666; font-size: 14px; }
+            .important-note { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 8px; margin: 20px 0; color: #856404; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              ${settings.company_logo_url ? `<img src="${settings.company_logo_url}" alt="${settings.company_name}" class="logo">` : ''}
+              <h1 class="company-name">${settings.company_name}</h1>
+            </div>
+            
+            <h2 class="invitation-title">TEAM INVITATION</h2>
+            
+            <div class="greeting">
+              Hi ${formData.full_name || formData.email},
+            </div>
+            
+            <div class="section">
+              <p>You've been invited to join our team! We're excited to have you on board.</p>
+              
+              <div class="highlight-box">
+                <p><strong>Your Role:</strong> <span class="role-badge">${formData.role.toUpperCase()}</span></p>
+                ${formData.specialization ? `<p><strong>Specialization:</strong> ${formData.specialization}</p>` : ''}
+                ${formData.hourly_rate ? `<p><strong>Hourly Rate:</strong> $${formData.hourly_rate}/hour</p>` : ''}
+              </div>
+              
+              ${formData.personal_message ? `
+              <div class="personal-message">
+                <strong>Personal Message:</strong><br>
+                ${formData.personal_message.replace(/\n/g, '<br>')}
+              </div>
+              ` : ''}
+            </div>
+            
+            <div class="section">
+              <h3>Next Steps</h3>
+              <p>To accept your invitation and create your account, please click the button below:</p>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${appUrl}/userInviteAcceptance?email=${encodeURIComponent(formData.email)}" class="accept-btn">Accept Invitation</a>
+              </div>
+              
+              <div class="important-note">
+                <strong>Important:</strong> This invitation is specifically for <strong>${formData.email}</strong>. Please use this email address to complete your registration.
+              </div>
+            </div>
+            
+            <div class="footer">
+              <p>Welcome to the team!</p>
+              <p><strong>${settings.company_name}</strong></p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
 
-      const emailBody = `Hi ${formData.full_name || formData.email},
+      // Plain text fallback
+      const plainTextBody = `Hi ${formData.full_name || formData.email},
 
-          You've been invited to join the ${formData.role} team on ${settings.company_name}.
+You've been invited to join the ${formData.role} team on ${settings.company_name}.
 
-          ${formData.personal_message ? `Personal message:
-          ${formData.personal_message}
+${formData.personal_message ? `Personal message:
+${formData.personal_message}
 
-          ` : ''}To accept your invitation and create your account, please click the link below:
+` : ''}To accept your invitation and create your account, please click the link below:
 
-          ${appUrl}/userInviteAcceptance?email=${encodeURIComponent(formData.email)}
+${appUrl}/userInviteAcceptance?email=${encodeURIComponent(formData.email)}
 
-          Important: This invitation is specifically for ${formData.email}. Please use this email address to complete your registration.
+Important: This invitation is specifically for ${formData.email}. Please use this email address to complete your registration.
 
-          Best regards,
-          ${settings.company_name} Team`;
+Best regards,
+${settings.company_name} Team`;
 
       try {
         // Check if Gmail is connected
         const gmailConnected = settings.gmail_refresh_token;
 
         if (gmailConnected) {
-          // Use the backend function to send via Gmail
+          // Use the backend function to send via Gmail with HTML
           await sendExternalEmail({
             to: formData.email,
             subject: `You're invited to join ${settings.company_name}`,
-            body: emailBody
+            body: plainTextBody,
+            html_message: htmlEmailBody
           });
         } else {
-          // Use the standard integration for internal/invited users
+          // Use the standard integration for internal/invited users with HTML
           await SendEmail({
             to: formData.email,
             subject: `You're invited to join ${settings.company_name}`,
-            body: emailBody
+            body: plainTextBody,
+            html_message: htmlEmailBody
           });
         }
         
@@ -111,7 +194,7 @@ export default function InviteUserDialog({ onClose, onUserInvited }) {
         let emailErrorMessage = "Invitation created but email could not be sent. ";
         
         if (emailError.response?.data?.error?.includes("outside the app")) {
-          emailErrorMessage += "The default mailer can only send to users invited to this app. Please connect your Gmail account in Settings to send emails to any address.";
+          emailErrorMessage += "The default mailer can only send to users invited to this app. Please connect your Gmail account in Settings to send emails to send emails to any address.";
         } else {
           emailErrorMessage += "The user can still sign up with the invited email address.";
         }

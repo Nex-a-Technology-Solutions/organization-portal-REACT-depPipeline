@@ -176,7 +176,7 @@ export default function Invoices() {
               box-shadow: 0 20px 50px rgba(0,0,0,0.1); 
             }
             .header { 
-              background: ${emailHeaderBg}; 
+              background: ${settings.primary_color};
               color: white; 
               padding: 40px; 
               text-align: center; 
@@ -301,18 +301,12 @@ export default function Invoices() {
         <body>
           <div class="container">
             <div class="header">
-              ${settings.company_logo_url 
-                ? `<div class="logo"><img src="${settings.company_logo_url}" alt="${settings.company_name}" /></div>` 
-                : `<div class="logo-fallback"><span style="font-size: 32px; font-weight: bold;">⚡</span></div>`
-              }
-              <h1>${settings.company_name}</h1>
-              <p style="opacity: 0.9; margin: 10px 0 0 0; font-size: 16px;">Business Portal</p>
             </div>
             
             <div class="content">
               <div style="text-align: center; margin-bottom: 40px;">
-                <h2 style="color: ${settings.primary_color}; font-size: 28px; margin-bottom: 5px;">INVOICE</h2>
-                <p style="font-size: 18px; color: ${emailLightTextColor};">Invoice #${invoice.invoice_number}</p>
+                <h2 style="color:${emailLightTextColor}; font-size: 15px; margin-bottom: 5px;">This invoice reflects the agreed-upon project deliverables and corresponding payment for the current stage of completion. Please review the details carefully. Payment is requested in accordance with the terms outlined in our agreement/proposal to ensure smooth continuation and timely delivery of the project.</h2>
+                <p style="text-align:start; font-size: 12px; color: ${emailLightTextColor};">Invoice #${invoice.invoice_number}</p>
               </div>
 
               <div class="invoice-details">
@@ -412,6 +406,8 @@ export default function Invoices() {
     }
   };
 
+// Replace the handleConfirmSendInvoice function in your Invoices component with this updated version:
+
   const handleConfirmSendInvoice = async (subject, body) => {
     if (!emailPreviewData) return;
 
@@ -423,19 +419,43 @@ export default function Invoices() {
       const settingsData = await Settings.list();
       const gmailConnected = settingsData.length > 0 && settingsData[0].gmail_refresh_token;
 
+      // Create plain text version of the email
+      const plainTextBody = `
+  Invoice ${emailPreviewData.subject.split(' ')[1]} from ${settingsData[0]?.company_name || 'Nex-a Portal'}
+
+  Dear ${recipient},
+
+  Please find attached your invoice details:
+
+  Invoice Number: ${selectedInvoice?.invoice_number}
+  Amount Due: $${selectedInvoice?.amount?.toLocaleString()}
+  Due Date: ${selectedInvoice?.due_date}
+
+  ${selectedInvoice?.stage_description}
+
+  Payment Terms: ${settingsData[0]?.payment_terms || 'Payment is due within 30 days of receipt'}
+
+  Thank you for your business!
+
+  Best regards,
+  ${settingsData[0]?.company_name || 'Nex-a Portal'} Team
+      `.trim();
+
       if (gmailConnected) {
-        // Use the backend function to send via Gmail
+        // Use the backend function to send via Gmail with both plain text and HTML
         await sendExternalEmail({
           to: recipient,
           subject: subject,
-          body: body
+          body: plainTextBody,
+          html_message: body // The HTML content goes here
         });
       } else {
-        // Use the standard integration for internal/invited users
+        // Use the standard integration for internal/invited users with both plain text and HTML
         await SendEmail({
           to: recipient,
           subject: subject,
-          body: body
+          body: plainTextBody,
+          html_message: body // The HTML content goes here
         });
       }
 
@@ -457,13 +477,12 @@ export default function Invoices() {
           status: "sent",
           sent_date: new Date().toISOString().split('T')[0]
         };
-        
-        console.log('Updating invoice with complete data:', updateData);
+
         
         await Invoice.update(invoiceId, updateData);
         
       } catch (error) {
-        // ... your error handling
+        console.error("Error updating invoice status:", error);
       }
 
       setShowEmailPreview(false);
@@ -496,8 +515,6 @@ export default function Invoices() {
         status: "paid",
         paid_date: new Date().toISOString().split('T')[0]
       };
-      
-      console.log('Marking invoice as paid with data:', updateData);
       
       await Invoice.update(invoice.id, updateData);
       loadData();

@@ -28,6 +28,8 @@ import UserInviteAcceptance from "./userInviteAcceptance";
 
 import Register from "./Register.jsx";
 
+import ClientProposalAcceptance from "./ClientProposalAcceptance.jsx";
+
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
 const PAGES = {
@@ -106,6 +108,8 @@ function PagesContent() {
                 <Route path="/ThankYou" element={<ThankYou />} />
 
                 <Route path="/userInviteAcceptance" element={<UserInviteAcceptance />} />
+
+                <Route path="/clientProposalAcceptance" element={<ClientProposalAcceptance />} />
                 
                 <Route path="/Register" element={<Register />} />
 

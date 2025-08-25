@@ -76,19 +76,12 @@ export default function CreateInvoiceDialog({ projects, onClose, onInvoiceCreate
     setLoading(true);
 
     try {
-      // First, let's log the form data to see what we have
-      console.log("Form data:", formData);
-      console.log("Available projects:", projects);
-      
-      // Find the selected project
       const project = projects.find(p => p.id === formData.project);
       if (!project) {
         alert('Please select a project');
         setLoading(false);
         return;
       }
-
-      console.log('Selected project:', project);
 
       // Since your Django model auto-populates client info from project,
       // but still requires the client foreign key, let's include it
@@ -103,10 +96,8 @@ export default function CreateInvoiceDialog({ projects, onClose, onInvoiceCreate
         due_date: formData.due_date
       };
 
-      console.log('Minimal invoice data being sent:', invoiceData);
 
       const response = await Invoice.create(invoiceData);
-      console.log('Success response:', response);
 
       onInvoiceCreated();
       onClose();

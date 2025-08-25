@@ -1,11 +1,10 @@
-
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
-import { Check, Send, FileText, DollarSign, Calendar, ExternalLink, Loader2 } from "lucide-react";
+import { Check, Send, FileText, DollarSign, Calendar, ExternalLink, Loader2, Zap } from "lucide-react";
 
 const statusColors = {
   draft: "bg-gray-100 text-gray-800",
@@ -14,7 +13,7 @@ const statusColors = {
   declined: "bg-red-100 text-red-800"
 };
 
-export default function ProposalViewer({ proposal, onAccept, onSendToClient, userRole, generatingContent }) {
+export default function ProposalViewer({ proposal, onAccept, onSendToClient, userRole, generatingContent, acceptingProposal }) {
   const stages = [
     { name: "Discovery & Requirements", percentage: 15 },
     { name: "Design & Architecture", percentage: 20 },
@@ -45,19 +44,41 @@ export default function ProposalViewer({ proposal, onAccept, onSendToClient, use
               {proposal.status}
             </Badge>
             {proposal.status === "draft" && (
-              <Button 
-                size="sm" 
-                className="bg-blue-600 hover:bg-blue-700"
-                onClick={() => onSendToClient(proposal)}
-                disabled={generatingContent === proposal.id}
-              >
-                {generatingContent === proposal.id ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4 mr-2" />
+              <div className="flex items-center gap-2">
+                <Button 
+                  size="sm" 
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={() => onSendToClient(proposal)}
+                  disabled={generatingContent === proposal.id}
+                >
+                  {generatingContent === proposal.id ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4 mr-2" />
+                  )}
+                  {generatingContent === proposal.id ? "Generating..." : "Send to Client"}
+                </Button>
+                {userRole === "admin" && (
+                  <Button 
+                    size="sm" 
+                    className="bg-green-600 hover:bg-green-600 text-white"
+                    onClick={() => onAccept(proposal)}
+                    disabled={acceptingProposal === proposal.id}
+                  >
+                    {acceptingProposal === proposal.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating Project...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Proceed & Create Project
+                      </>
+                    )}
+                  </Button>
                 )}
-                {generatingContent === proposal.id ? "Generating..." : "Send to Client"}
-              </Button>
+              </div>
             )}
             {proposal.status === "sent" && (
               <div className="flex items-center gap-2">
@@ -74,9 +95,19 @@ export default function ProposalViewer({ proposal, onAccept, onSendToClient, use
                     size="sm" 
                     className="bg-green-600 hover:bg-green-700"
                     onClick={() => onAccept(proposal)}
+                    disabled={acceptingProposal === proposal.id}
                   >
-                    <Check className="w-4 h-4 mr-2" />
-                    Accept & Create Project
+                    {acceptingProposal === proposal.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating Project...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 mr-2" />
+                        Accept & Create Project
+                      </>
+                    )}
                   </Button>
                 )}
               </div>

@@ -1,12 +1,11 @@
-
 import React, { useState, useEffect } from "react";
 import { User } from "@/api/entities";
 import { Proposal } from "@/api/entities";
 import { Project } from "@/api/entities";
 import { Invoice } from "@/api/entities";
-import { Settings } from "@/api/entities"; // Correctly import Settings
+import { Settings } from "@/api/entities";
 import { InvokeLLM, SendEmail } from "@/api/integrations";
-import { sendExternalEmail } from "@/api/functions"; // New function for external emails
+import { sendExternalEmail } from "@/api/functions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,8 +26,7 @@ export default function Proposals() {
   const [loading, setLoading] = useState(true);
   const [generatingContent, setGeneratingContent] = useState(null);
   const [invoiceLoading, setInvoiceLoading] = useState({});
-
-  // New state for email preview
+  const [acceptingProposal, setAcceptingProposal] = useState(null);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [emailPreviewData, setEmailPreviewData] = useState(null);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -72,13 +70,8 @@ export default function Proposals() {
     setGeneratingContent(proposal.id);
 
     try {
-      // Correctly fetch settings from the Settings entity
+      // Get settings first
       const settingsData = await Settings.list();
-      console.log("Proposal data:", proposal);
-      console.log("Settings data:", settings);
-      console.log("AI response:", proposalContent);
-      console.log("Subject:", proposalContent.subject_line || `Proposal: ${proposal.title} - ${settings.company_name}`);
-      console.log("HTML content length:", proposalContent.html_content?.length);
       const settings = settingsData.length > 0 ? settingsData[0] : {
         company_name: "Nex-a Tech Solutions",
         company_logo_url: "",
@@ -87,10 +80,11 @@ export default function Proposals() {
         accent_color: "#F2F2F2",
         email_theme: "light",
       };
-
-      // Generate beautiful proposal with AI - simplified prompt to avoid network issues
-      const proposalContent = await InvokeLLM({
-        prompt: `Create a professional HTML proposal for ${settings.company_name}.
+      
+      // PROPERLY STRUCTURE THE AI REQUEST
+// Update your frontend code where you call InvokeLLM
+const proposalContent = await InvokeLLM({
+  prompt: `Create a professional HTML proposal for ${settings.company_name}.
 
 Theme: ${settings.email_theme}
 Colors: Primary ${settings.primary_color}, Secondary ${settings.secondary_color}, Accent ${settings.accent_color}
@@ -109,31 +103,70 @@ Create a complete HTML email with:
 - Executive summary
 - Project details and scope
 - Investment information
-- Accept proposal button
+- Accept proposal button linking to: ${window.location.origin}/clientProposalAcceptance?proposalId=${proposal.id}&email=${encodeURIComponent(proposal.client_email)}
 - Clean, branded styling using the specified theme and colors
 
-Make it self-contained HTML with inline CSS.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            html_content: { type: "string" },
-            subject_line: { type: "string" }
-          }
-        }
-      });
-      
-      setEmailPreviewData({
-        recipient: proposal.client_email,
-        subject: proposalContent.subject_line || `Proposal: ${proposal.title} - ${settings.company_name}`,
-        body: proposalContent.html_content,
-        proposalId: proposal.id,
-        generatedContent: proposalContent.html_content
-      });
-      setShowEmailPreview(true);
+Make it self-contained HTML with inline CSS. Return ONLY a JSON object with html_content and subject_line properties.`,
+  response_json_schema: {
+    type: "object",
+    properties: {
+      html_content: { type: "string" },
+      subject_line: { type: "string" }
+    },
+    required: ["html_content", "subject_line"]
+  }
+});
+
+
+// Handle the case where the backend returns {result: "```json\n{...}\n```"}
+let parsedContent;
+if (proposalContent.result && typeof proposalContent.result === 'string') {
+  try {
+    // Clean the markdown-wrapped JSON
+    let cleanText = proposalContent.result.trim();
+    
+    // Remove markdown code block wrapper
+    if (cleanText.startsWith("```json")) {
+      cleanText = cleanText.slice(7); // Remove "```json"
+      if (cleanText.endsWith("```")) {
+        cleanText = cleanText.slice(0, -3); // Remove trailing "```"
+      }
+    } else if (cleanText.startsWith("```")) {
+      cleanText = cleanText.slice(3); // Remove "```"
+      if (cleanText.endsWith("```")) {
+        cleanText = cleanText.slice(0, -3); // Remove trailing "```"
+      }
+    }
+    
+    cleanText = cleanText.trim();
+    
+    // Parse the cleaned JSON
+    parsedContent = JSON.parse(cleanText);
+  } catch (error) {
+    console.error("Failed to parse JSON from result:", error);
+    console.error("Problematic text:", proposalContent.result);
+    
+    // Fallback to original response
+    parsedContent = proposalContent;
+  }
+} else {
+  // If it's already properly formatted
+  parsedContent = proposalContent;
+}
+
+setEmailPreviewData({
+  recipient: proposal.client_email,
+  subject: parsedContent.subject_line || `Proposal: ${proposal.title} - ${settings.company_name}`,
+  body: parsedContent.html_content,
+  proposalId: proposal.id,
+  generatedContent: parsedContent.html_content
+});
+setShowEmailPreview(true);
 
     } catch (error) {
-      console.error("Error generating proposal content:", error); 
-      // Get settings again for fallback template (in case of error before settings were fetched)
+      console.error("Error generating proposal content:", error);
+      
+      // Create fallback content using the same structure as before
       let fallbackSettings;
       try {
         const settingsData = await Settings.list();
@@ -146,7 +179,6 @@ Make it self-contained HTML with inline CSS.`,
           email_theme: "light",
         };
       } catch (settingsError) {
-        // Ultimate fallback if settings can't be fetched
         fallbackSettings = {
           company_name: "Nex-a Tech Solutions",
           company_logo_url: "",
@@ -157,7 +189,6 @@ Make it self-contained HTML with inline CSS.`,
         };
       }
       
-      // Provide fallback HTML template if AI fails
       const fallbackHTML = `
         <!DOCTYPE html>
         <html>
@@ -210,7 +241,7 @@ Make it self-contained HTML with inline CSS.`,
             <div class="investment">Investment: $${proposal.total_fee?.toLocaleString()}</div>
             
             <div style="text-align: center; margin: 40px 0;">
-              <a href="${window.location.origin}/proposal/${proposal.id}" class="accept-btn">Accept This Proposal</a>
+              <a href="${window.location.origin}/clientProposalAcceptance?proposalId=${proposal.id}&email=${encodeURIComponent(proposal.client_email)}" class="accept-btn">Accept This Proposal</a>
             </div>
             
             <div class="footer">
@@ -231,144 +262,230 @@ Make it self-contained HTML with inline CSS.`,
       });
       setShowEmailPreview(true);
       
-      // Show user-friendly message
-      alert("AI generation temporarily unavailable. Using standard proposal template. You can edit the content before sending.");
+      // Show a more subtle warning message
+      console.warn("Using fallback proposal template due to AI generation error:", error);
+      
     } finally {
       setGeneratingContent(null);
     }
   };
 
   const handleConfirmSendProposal = async (subject, body) => {
-      if (!emailPreviewData) return;
-      
-      setIsSendingEmail(true);
-      const { proposalId, recipient, generatedContent } = emailPreviewData;
+    if (!emailPreviewData) return;
+    
+    setIsSendingEmail(true);
+    const { proposalId, recipient, generatedContent } = emailPreviewData;
 
+    try {
+      const settingsData = await Settings.list();
+      const gmailConnected = settingsData.length > 0 && settingsData[0].gmail_refresh_token;
+
+      // Both Gmail and default mailer use the same Django endpoint now
+      await sendExternalEmail({
+        to: recipient,
+        subject: subject,
+        body: "Please view this email in HTML format to see the proposal.",  // Plain text fallback
+        html_message: body,   // Django's standard parameter for HTML content
+      });
+
+      // Update proposal status
       try {
-        // Check if Gmail is connected
-        const settingsData = await Settings.list();
-        const gmailConnected = settingsData.length > 0 && settingsData[0].gmail_refresh_token;
-
-        if (gmailConnected) {
-          // Use the backend function to send via Gmail
-          await sendExternalEmail({
-            to: recipient,
-            subject: subject,
-            body: body,
-          });
-        } else {
-          // Use the standard integration for internal/invited users
-          await SendEmail({
-            to: recipient,
-            subject: subject,
-            body: body,
-          });
-        }
-
-        // Option 1: Use the custom send_proposal endpoint (recommended)
-        try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://organization-portal-deppipeline.onrender.com/api'}/proposals/${proposalId}/send_proposal/`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-            },
-            body: JSON.stringify({
-              generated_content: generatedContent
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to update proposal status');
-          }
-        } catch (error) {
-          console.error('Error with custom endpoint, trying direct update:', error);
-          
-          // Option 2: Fallback to direct update (simplified payload)
-          await Proposal.update(proposalId, {
-            status: "sent",
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api'}/proposals/${proposalId}/send_proposal/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          },
+          body: JSON.stringify({
             generated_content: generatedContent
-            // Remove sent_date - let the backend handle it automatically
-          });
-        }
+          }),
+        });
 
-        setShowEmailPreview(false);
-        setEmailPreviewData(null);
-        loadData();
+        if (!response.ok) {
+          throw new Error('Failed to update proposal status');
+        }
       } catch (error) {
-        console.error("Error sending proposal email:", error);
-        if (error.response?.data?.error?.includes("outside the app")) {
-          alert("Failed to send proposal: The default mailer can only send to users invited to this app. Please connect your Gmail account in Settings to send emails to any address.");
-        } else {
-          alert("Failed to send proposal. Please try again.");
-        }
-      } finally {
-        setIsSendingEmail(false);
+        console.error('Error with custom endpoint, trying direct update:', error);
+        
+        await Proposal.update(proposalId, {
+          status: "sent",
+          generated_content: generatedContent
+        });
       }
-    };
 
-
-    const handleAcceptProposal = async (proposal) => {
-      try {
-        await Proposal.update(proposal.id, { status: "accepted" });
+      setShowEmailPreview(false);
+      setEmailPreviewData(null);
+      loadData();
       
-        const clientId = proposal.client_id || 
-                        proposal.clientId || 
-                        proposal.client?.id || 
-                        proposal.client;
-        
-        console.log("Final clientId:", clientId);
+      alert("✅ Proposal sent successfully as HTML email!");
 
-        if (!clientId) {
-          console.error("? NO CLIENT ID FOUND!");
-          console.error("Available proposal fields:", Object.keys(proposal));
-          alert("Error: No client ID found in proposal. Check console for details.");
-          return;
-        }
-
-        // 2. Create project from proposal
-        const projectData = {
-          title: proposal.title,
-          description: proposal.description,
-          project_type: proposal.project_type,
-          client: clientId, // Use the found client ID
-          client_name: proposal.client_name,
-          client_email: proposal.client_email,
-          total_fee: proposal.total_fee,
-          status: "active",
-          current_stage: "discovery",
-          start_date: new Date().toISOString().split('T')[0],
-          stage_completion: {
-            discovery: false,
-            design: false,
-            development: false,
-            testing: false,
-            deployment: false,
-            training: false
-          }
-        };
-        
-        console.log("=== PROJECT DATA BEING SENT ===");
-        console.log(projectData);
-        
-        await Project.create(projectData);
-
-        alert("Proposal accepted and project has been created successfully!");
-        loadData();
-      } catch (error) {
-        console.error("Error accepting proposal:", error);
-        console.error("EXACT ERROR:", error.response?.data);
-        console.error("Error status:", error.response?.status);
-        console.error("EXACT ERROR:", JSON.stringify(error.response.data, null, 2));
-        alert("There was an error creating the project. Please check the console.");
+    } catch (error) {
+      console.error("Error sending proposal email:", error);
+      if (error.response?.data?.error?.includes("outside the app")) {
+        alert("Failed to send proposal: The default mailer can only send to users invited to this app. Please connect your Gmail account in Settings to send emails to any address.");
+      } else {
+        alert("Failed to send proposal. Please try again.");
       }
-    };
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
-  // Helper function to determine the next project stage
+  const handleAcceptProposal = async (proposal) => {
+    setAcceptingProposal(proposal.id);
+    
+    try {
+      // Update proposal status to accepted
+      await Proposal.update(proposal.id, { status: "accepted" });
+    
+      const clientId = proposal.client_id || 
+                      proposal.clientId || 
+                      proposal.client?.id || 
+                      proposal.client;
+      
+
+      if (!clientId) {
+        console.error("❌ NO CLIENT ID FOUND!");
+        console.error("Available proposal fields:", Object.keys(proposal));
+        alert("Error: No client ID found in proposal. Check console for details.");
+        return;
+      }
+
+      // Create the project first
+      const projectData = {
+        title: proposal.title,
+        description: proposal.description,
+        project_type: proposal.project_type,
+        client: clientId,
+        client_name: proposal.client_name,
+        client_email: proposal.client_email,
+        total_fee: proposal.total_fee,
+        status: "active",
+        current_stage: "discovery",
+        start_date: new Date().toISOString().split('T')[0],
+        stage_completion: {
+          planning: false,
+          development: false,
+          testing: false,
+          deployment: false,
+          maintenance: false
+        }
+      };
+      
+      
+      const createdProject = await Project.create(projectData);
+
+      // Create the first invoice automatically with AI description
+      try {
+        const stageDescriptions = {
+          planning: "Planning & Requirements Analysis",
+          development: "Development & Configuration", 
+          testing: "Testing & Quality Assurance",
+          deployment: "Deployment & Implementation",
+          maintenance: "Maintenance & Support"
+        };
+
+        const stagePercentages = {
+          planning: 25,
+          development: 40,
+          testing: 15,
+          deployment: 15,
+          maintenance: 5
+        };
+
+        // Generate AI description for the first stage (planning)
+        let aiDescription = `${stageDescriptions.planning} - Project kickoff, requirements gathering, stakeholder interviews, technical specification development, and comprehensive project planning for ${proposal.title}.`;
+        
+        try {
+          const aiResponse = await InvokeLLM({
+            prompt: `Generate a professional invoice description for the "${stageDescriptions.planning}" phase of a ${proposal.project_type} project titled "${proposal.title}" for client "${proposal.client_name}".
+
+This is the initial invoice for project kickoff and planning phase.
+Include specific deliverables and work to be completed in this phase. Be detailed and professional.
+
+Project context: ${proposal.description}
+
+Return ONLY a JSON object with a description property.`,
+            response_json_schema: {
+              type: "object",
+              properties: {
+                description: { type: "string" }
+              },
+              required: ["description"]
+            }
+          });
+          
+          // Only use AI description if it exists and is not empty
+          if (aiResponse && aiResponse.description && aiResponse.description.trim().length > 0) {
+            aiDescription = aiResponse.description.trim();
+          } else {
+            console.warn("⚠️ AI returned empty description, using fallback");
+          }
+        } catch (aiError) {
+          console.warn("❌ AI generation failed for invoice, using fallback description:", aiError);
+          // aiDescription is already set to fallback above
+        }
+      
+
+        // Generate invoice number
+        const existingInvoices = await Invoice.list("-created_date", 100);
+        const invoiceNumbers = existingInvoices
+          .map(inv => {
+            const match = inv.invoice_number.match(/^INV-(\d+)$/);
+            return match ? parseInt(match[1]) : 0;
+          })
+          .filter(num => num > 0);
+
+        const nextNumber = invoiceNumbers.length > 0 ? Math.max(...invoiceNumbers) + 1 : 1;
+        const invoiceNumber = `INV-${nextNumber.toString().padStart(4, '0')}`;
+
+        // Calculate amount for planning stage (25% of total fee)
+        const amount = Math.round((proposal.total_fee * stagePercentages.planning / 100) * 100) / 100;
+
+        // Create the invoice
+        const invoiceData = {
+          project: createdProject.id,
+          client: clientId,
+          invoice_number: invoiceNumber,
+          stage: "planning",
+          stage_description: aiDescription,
+          amount: amount.toFixed(2),
+          percentage: stagePercentages.planning.toString(),
+          status: "draft",
+          due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        };
+
+
+        const createdInvoice = await Invoice.create(invoiceData);
+
+      } catch (invoiceError) {
+        console.error("❌ Error creating initial invoice:", invoiceError);
+        console.error("Invoice error details:", invoiceError.response?.data);
+        alert(`Project created successfully! However, there was an issue creating the initial invoice: ${invoiceError.message}. You can create the invoice manually.`);
+      }
+
+      alert("✅ Proposal accepted! Project and initial invoice have been created successfully!");
+      loadData();
+
+    } catch (error) {
+      console.error("❌ Error accepting proposal:", error);
+      console.error("EXACT ERROR:", error.response?.data);
+      console.error("Error status:", error.response?.status);
+      
+      if (error.response?.data) {
+        console.error("DETAILED ERROR:", JSON.stringify(error.response.data, null, 2));
+      }
+      
+      alert("There was an error creating the project. Please check the console for details.");
+    } finally {
+      setAcceptingProposal(null);
+    }
+  };
+
   const getNextStage = (currentStage) => {
     const stagesOrder = [
       "discovery",
-      "design",
+      "design", 
       "development",
       "testing",
       "deployment",
@@ -378,14 +495,13 @@ Make it self-contained HTML with inline CSS.`,
     if (currentIndex < stagesOrder.length - 1) {
       return stagesOrder[currentIndex + 1];
     }
-    return "completed"; // Indicates all defined stages are done
+    return "completed";
   };
 
   const handleStageComplete = async (project, stage) => {
     setInvoiceLoading(prev => ({ ...prev, [stage]: true }));
 
     try {
-      // Generate AI invoice description
       const stageDescriptions = {
         discovery: "Discovery & Requirements Analysis",
         design: "System Design & Architecture",
@@ -404,25 +520,28 @@ Make it self-contained HTML with inline CSS.`,
         training: 5
       };
 
-      const aiDescription = await InvokeLLM({
+      // Generate AI description for this stage
+      const aiResponse = await InvokeLLM({
         prompt: `Generate a professional invoice description for the "${stageDescriptions[stage]}" phase of a ${project.project_type} project titled "${project.title}" for client "${project.client_name}".
 
-        Include specific deliverables and work completed in this phase. Be detailed and professional.
+Include specific deliverables and work completed in this phase. Be detailed and professional.
 
-        Project context: ${project.description}`,
+Project context: ${project.description}
+
+Return ONLY a JSON object with a description property.`,
         response_json_schema: {
           type: "object",
           properties: {
             description: { type: "string" }
-          }
+          },
+          required: ["description"]
         }
       });
 
-      // Generate proper 4-digit sequential invoice number
-      const existingInvoices = await Invoice.list("-created_date", 100); // Fetch recent invoices to find max number
+      const existingInvoices = await Invoice.list("-created_date", 100);
       const invoiceNumbers = existingInvoices
         .map(inv => {
-          const match = inv.invoice_number.match(/^INV-(\d+)$/); // Match only invoices with the "INV-XXXX" format
+          const match = inv.invoice_number.match(/^INV-(\d+)$/);
           return match ? parseInt(match[1]) : 0;
         })
         .filter(num => num > 0);
@@ -435,25 +554,23 @@ Make it self-contained HTML with inline CSS.`,
       await Invoice.create({
         project_id: project.id,
         invoice_number: invoiceNumber,
-        client_id: project.client_id, // Ensure client_id is passed for consistency
+        client_id: project.client_id,
         client_name: project.client_name,
-        client_email: project.client_email || "", // Fallback for email
+        client_email: project.client_email || "",
         stage: stage,
-        stage_description: aiDescription.description,
+        stage_description: aiResponse.description,
         amount: amount,
         percentage: stagePercentages[stage],
-        status: "pending", // New invoices created upon stage completion start as pending
+        status: "pending",
         due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       });
 
-      // Update project stage completion and current stage
       const updatedStageCompletion = { ...project.stage_completion, [stage]: true };
       await Project.update(project.id, {
         stage_completion: updatedStageCompletion,
         current_stage: getNextStage(stage)
       });
 
-      // Refresh data after changes
       loadData();
 
     } catch (error) {
@@ -497,8 +614,9 @@ Make it self-contained HTML with inline CSS.`,
             <p className="text-slate-600 text-sm sm:text-base">Create and manage client proposals</p>
           </div>
           <Button
+            size="sm"
             onClick={() => setShowCreateDialog(true)}
-            className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold"
+            className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-900"
           >
             <Plus className="w-4 h-4 mr-2" />
             New Proposal
@@ -544,6 +662,7 @@ Make it self-contained HTML with inline CSS.`,
                 onSendToClient={handleSendToClient}
                 userRole={user?.access_level}
                 generatingContent={generatingContent}
+                acceptingProposal={acceptingProposal}
               />
             ) : (
               <Card className="h-64 sm:h-96 flex items-center justify-center bg-white/80 backdrop-blur-sm">

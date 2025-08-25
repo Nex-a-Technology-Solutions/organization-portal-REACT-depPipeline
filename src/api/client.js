@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 // Configure your Django API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://organization-portal-deppipeline.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
 
 // Create axios instance
 const apiClient = axios.create({
@@ -153,8 +153,6 @@ export const auth = {
     try {
       // Changed from '/auth/register/' to '/auth/register/'
       const response = await apiClient.post('/auth/register/', userData);
-      const { access, refresh } = response.data;
-      setTokens(access, refresh);
       return response.data;
     } catch (error) {
       throw error.response?.data || error;
@@ -385,23 +383,77 @@ export const Settings = {
   }
 };
 
+// Updated Notification object for client.js
 export const Notification = {
   async getAll(params = {}) {
     const response = await apiClient.get('/notifications/', { params });
     return response.data;
   },
+
   async markAsRead(id) {
-    const response = await apiClient.patch(`/notifications/${id}/`, { is_read: true });
+    const response = await apiClient.patch(`/notifications/${id}/mark_read/`);
     return response.data;
   },
-  // Add list method for compatibility
-  async list(ordering = null, limit = null) {
-    const params = {};
+
+  async markAllRead() {
+    const response = await apiClient.patch('/notifications/mark_all_read/');
+    return response.data;
+  },
+
+  async clearAll() {
+    const response = await apiClient.delete('/notifications/clear_all/');
+    return response.data;
+  },
+
+  async getUnreadCount() {
+    const response = await apiClient.get('/notifications/unread_count/');
+    return response.data;
+  },
+
+  async getSummary() {
+    const response = await apiClient.get('/notifications/summary/');
+    return response.data;
+  },
+
+  // Updated list method that properly handles ordering and filters
+  async list(ordering = null, limit = null, filters = {}) {
+    const params = { ...filters };
+    if (ordering) {
+      // Convert ordering format (remove leading dash, add to ordering param)
+      const orderField = ordering.startsWith('-') ? ordering.substring(1) : ordering;
+      const orderDirection = ordering.startsWith('-') ? 'desc' : 'asc';
+      params.ordering = ordering; // Django REST framework handles -field format
+    }
+    if (limit) params.limit = limit;
+    
+    const response = await apiClient.get('/notifications/', { params });
+    return response.data;
+  },
+
+  // Updated filter method to properly handle parameters
+  async filter(filterParams = {}, ordering = null, limit = null) {
+    const params = { ...filterParams };
     if (ordering) params.ordering = ordering;
     if (limit) params.limit = limit;
     
     const response = await apiClient.get('/notifications/', { params });
-    return response.data.results || response.data;
+    return response.data;
+  },
+
+  // Standard CRUD methods for consistency
+  async create(data) {
+    const response = await apiClient.post('/notifications/', data);
+    return response.data;
+  },
+
+  async update(id, data) {
+    const response = await apiClient.patch(`/notifications/${id}/`, data);
+    return response.data;
+  },
+
+  async delete(id) {
+    const response = await apiClient.delete(`/notifications/${id}/`);
+    return response.data;
   }
 };
 
@@ -437,6 +489,110 @@ export const UserInvitation = {
     
     const response = await apiClient.get('/user-invitations/', { params });
     return response.data.results || response.data;
+  }
+};
+
+// Add to your api/client.js or wherever you handle API calls
+// Replace your existing PublicProposal in client.js with this debug version
+export const PublicProposal = {
+  async validate(proposalId, email) {
+    try {
+      console.log('Validating proposal:', { proposalId, email });
+      
+      const response = await axios.get(`${API_BASE_URL}/validate-proposal/?proposalId=${proposalId}&email=${encodeURIComponent(email)}`, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      console.log('Validation response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Proposal validation error:', error.response?.data || error);
+      throw error.response?.data || error;
+    }
+  },
+
+  async accept(proposalId, email) {
+    try {
+      console.log('=== DEBUGGING PROPOSAL ACCEPTANCE ===');
+      console.log('Accepting proposal with data:', { proposalId, email });
+      console.log('API_BASE_URL:', API_BASE_URL);
+      console.log('Full URL:', `${API_BASE_URL}/accept-proposal/`);
+      
+      const requestData = {
+        proposalId: proposalId,
+        email: email
+      };
+      
+      const requestConfig = {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      };
+      
+      console.log('Request data:', requestData);
+      console.log('Request config:', requestConfig);
+      
+      const response = await axios.patch(`${API_BASE_URL}/accept-proposal/`, requestData, requestConfig);
+      
+      console.log('✅ Accept response successful:', response.data);
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+      
+      return response.data;
+      
+    } catch (error) {
+      console.error('❌ PROPOSAL ACCEPTANCE FAILED');
+      console.error('Error object:', error);
+      
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response statusText:', error.response.statusText);
+        console.error('Response headers:', error.response.headers);
+        console.error('Response data:', error.response.data);
+        
+        // Log the raw response for debugging
+        console.error('Raw response:', {
+          data: error.response.data,
+          status: error.response.status,
+          statusText: error.response.statusText,
+          headers: error.response.headers,
+          config: error.response.config
+        });
+        
+        // Try to parse the error message
+        let errorMessage = 'Unknown error occurred';
+        if (typeof error.response.data === 'string') {
+          errorMessage = error.response.data;
+        } else if (error.response.data && error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.response.data && error.response.data.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response.data && error.response.data.message) {
+          errorMessage = error.response.data.message;
+        }
+        
+        console.error('Parsed error message:', errorMessage);
+        
+        // Throw a more detailed error
+        const detailedError = {
+          message: errorMessage,
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data
+        };
+        
+        throw detailedError;
+        
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+        throw { message: 'No response from server', type: 'network' };
+      } else {
+        console.error('Request setup error:', error.message);
+        throw { message: error.message, type: 'setup' };
+      }
+    }
   }
 };
 

@@ -54,137 +54,160 @@ export default function Dashboard() {
     loadDashboardData();
   }, []);
 
-  const loadDashboardData = async () => {
-    setLoading(true);
+  // Updated notification loading section in Dashboard.jsx
+
+// In the loadDashboardData function, replace the notification loading part:
+
+const loadDashboardData = async () => {
+  setLoading(true);
+  try {
+    const userData = await User.me();
+    setUser(userData);
+    
+    console.log("Dashboard: User data loaded:", userData);
+
+    let projectsData = [];
+    let invoicesData = [];
+    let timeEntriesData = [];
+    let notificationsData = [];
+    let statsData = null;
+
+    // Load dashboard stats from backend
     try {
-      const userData = await User.me();
-      setUser(userData);
+      statsData = await entities.getDashboardStats();
+      setDashboardStats(statsData);
+    } catch (error) {
+      console.error("Error loading dashboard stats:", error);
+    }
+
+    if (userData.access_level === "admin") {
+      console.log("Dashboard: Loading data for admin user");
       
-
-      let projectsData = [];
-      let invoicesData = [];
-      let timeEntriesData = [];
-      let notificationsData = [];
-      let statsData = null;
-
-      // Load dashboard stats from backend
       try {
-        statsData = await entities.getDashboardStats();
-        setDashboardStats(statsData);
+        // Updated notification loading - use filter method with proper parameters
+        const notificationPromise = Notification.filter({ is_read: false }, "-created_date", 20);
+        
+        [projectsData, invoicesData, timeEntriesData, notificationsData] = await Promise.all([
+          Project.list("-updated_date", 20),
+          Invoice.list("-created_date", 10),
+          TimeEntry.list("-created_date", 10),
+          notificationPromise
+        ]);
+        
+        console.log("Dashboard: Admin data loaded - Projects:", projectsData.length, "Invoices:", invoicesData.length, "Notifications:", notificationsData.length);
       } catch (error) {
-        console.error("Error loading dashboard stats:", error);
-      }
-
-      if (userData.access_level === "admin") {
+        console.error("Dashboard: Error loading admin data:", error);
         
+        // Try loading individually if Promise.all fails
         try {
-          [projectsData, invoicesData, timeEntriesData, notificationsData] = await Promise.all([
-            Project.list("-updated_date", 20),
-            Invoice.list("-created_date", 10),
-            TimeEntry.list("-created_date", 10),
-            Notification.filter({ is_read: false }, "-created_date")
-          ]);
-          
-        } catch (error) {
-          console.error("Dashboard: Error loading admin data:", error);
-          
-          // Try loading individually if Promise.all fails
-          try {
-            projectsData = await Project.list("-updated_date", 20);
-          } catch (projectError) {
-            console.error("Dashboard: Error loading projects:", projectError);
-          }
-          
-          try {
-            invoicesData = await Invoice.list("-created_date", 10);
-          } catch (invoiceError) {
-            console.error("Dashboard: Error loading invoices:", invoiceError);
-          }
-          
-          try {
-            timeEntriesData = await TimeEntry.list("-created_date", 10);
-          } catch (timeError) {
-            console.error("Dashboard: Error loading time entries:", timeError);
-          }
-          
-          try {
-            notificationsData = await Notification.filter({ is_read: false }, "-created_date");
-          } catch (notificationError) {
-            console.error("Dashboard: Error loading notifications:", notificationError);
-          }
+          projectsData = await Project.list("-updated_date", 20);
+          console.log("Dashboard: Individual project load - Projects:", projectsData.length);
+        } catch (projectError) {
+          console.error("Dashboard: Error loading projects:", projectError);
         }
         
-      } else if (userData.access_level === "staff") {
-        console.log("Dashboard: Loading data for staff user"); // Debug log
-        
         try {
-          const allTasks = await Task.filter({ assigned_to: userData.email }, "-created_date");
-          const projectIds = [...new Set(allTasks.map(task => task.project_id))];
-          
-          const allProjects = await Project.list("-updated_date", 20);
-          projectsData = allProjects.filter(project => projectIds.includes(project.id));
-          
-          timeEntriesData = await TimeEntry.filter({ user_email: userData.email }, "-created_date", 10);
-          
-          // FIXED: Load invoices for staff users too (they should see invoices in recent activity)
           invoicesData = await Invoice.list("-created_date", 10);
-          
-        } catch (error) {
-          console.error("Dashboard: Error loading staff data:", error);
+          console.log("Dashboard: Individual invoice load - Invoices:", invoicesData.length);
+        } catch (invoiceError) {
+          console.error("Dashboard: Error loading invoices:", invoiceError);
         }
-        
-      } else if (userData.access_level === "client") {
-        console.log("Dashboard: Loading data for client user"); // Debug log
         
         try {
-          const clientRecord = await Client.filter({ user_id: userData.id }, 1);
-          if (clientRecord.length > 0) {
-            projectsData = await Project.filter({ client_id: clientRecord[0].id }, "-updated_date", 20);
-          } else {
-            console.log("Dashboard: No client record found for user"); // Debug log
-          }
-          
-          // Note: Clients don't need invoices in RecentActivity (handled by userRole check)
-        } catch (error) {
-          console.error("Dashboard: Error loading client data:", error);
+          timeEntriesData = await TimeEntry.list("-created_date", 10);
+        } catch (timeError) {
+          console.error("Dashboard: Error loading time entries:", timeError);
+        }
+        
+        try {
+          notificationsData = await Notification.filter({ is_read: false }, "-created_date", 20);
+          console.log("Dashboard: Individual notification load - Notifications:", notificationsData.length);
+        } catch (notificationError) {
+          console.error("Dashboard: Error loading notifications:", notificationError);
+          notificationsData = []; // Set to empty array on error
         }
       }
-
-      setProjects(projectsData);
-      setInvoices(invoicesData);
-      setTimeEntries(timeEntriesData);
-      setNotifications(notificationsData);
-    } catch (error) {
-      console.error("Error loading dashboard data:", error);
-    }
-    setLoading(false);
-  };
-  
-  const handleCreation = (dialogSetter) => {
-    dialogSetter(false);
-    loadDashboardData();
-  };
-
-  const handleClearNotification = async (id) => {
-    try {
-      await Notification.update(id, { is_read: true });
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    } catch (error) {
-      console.error("Error clearing notification:", error);
-    }
-  };
-
-  const handleClearAllNotifications = async () => {
-    try {
-      const unreadIds = notifications.map(n => n.id);
-      for (const id of unreadIds) {
-        await Notification.update(id, { is_read: true });
+      
+    } else if (userData.access_level === "staff") {
+      console.log("Dashboard: Loading data for staff user");
+      
+      try {
+        const allTasks = await Task.filter({ assigned_to: userData.email }, "-created_date");
+        const projectIds = [...new Set(allTasks.map(task => task.project_id))];
+        
+        const allProjects = await Project.list("-updated_date", 20);
+        projectsData = allProjects.filter(project => projectIds.includes(project.id));
+        
+        timeEntriesData = await TimeEntry.filter({ user_email: userData.email }, "-created_date", 10);
+        invoicesData = await Invoice.list("-created_date", 10);
+        
+        // Load notifications for staff users too
+        try {
+          notificationsData = await Notification.filter({ is_read: false }, "-created_date", 10);
+        } catch (notificationError) {
+          console.error("Dashboard: Error loading staff notifications:", notificationError);
+          notificationsData = [];
+        }
+        
+        console.log("Dashboard: Staff data loaded - Projects:", projectsData.length, "Invoices:", invoicesData.length);
+      } catch (error) {
+        console.error("Dashboard: Error loading staff data:", error);
       }
-      setNotifications([]);
-    } catch (error) {
-      console.error("Error clearing all notifications:", error);
+      
+    } else if (userData.access_level === "client") {
+      console.log("Dashboard: Loading data for client user");
+      
+      try {
+        const clientRecord = await Client.filter({ user_id: userData.id }, 1);
+        if (clientRecord.length > 0) {
+          projectsData = await Project.filter({ client_id: clientRecord[0].id }, "-updated_date", 20);
+          console.log("Dashboard: Client data loaded - Projects:", projectsData.length);
+        } else {
+          console.log("Dashboard: No client record found for user");
+        }
+        
+        // Load notifications for client users
+        try {
+          notificationsData = await Notification.filter({ is_read: false }, "-created_date", 5);
+        } catch (notificationError) {
+          console.error("Dashboard: Error loading client notifications:", notificationError);
+          notificationsData = [];
+        }
+      } catch (error) {
+        console.error("Dashboard: Error loading client data:", error);
+      }
     }
-  };
+
+    console.log("Dashboard: Final data being set - Projects:", projectsData, "Invoices:", invoicesData, "Notifications:", notificationsData);
+    
+    setProjects(projectsData);
+    setInvoices(invoicesData);
+    setTimeEntries(timeEntriesData);
+    setNotifications(notificationsData);
+  } catch (error) {
+    console.error("Error loading dashboard data:", error);
+  }
+  setLoading(false);
+};
+
+// Updated notification handlers
+const handleClearNotification = async (id) => {
+  try {
+    await Notification.markAsRead(id);
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  } catch (error) {
+    console.error("Error clearing notification:", error);
+  }
+};
+
+const handleClearAllNotifications = async () => {
+  try {
+    await Notification.markAllRead();
+    setNotifications([]);
+  } catch (error) {
+    console.error("Error clearing all notifications:", error);
+  }
+};
 
   // Use dashboard stats from backend or fallback to calculated values
   const getStatsValue = (statKey, fallbackCalculation) => {

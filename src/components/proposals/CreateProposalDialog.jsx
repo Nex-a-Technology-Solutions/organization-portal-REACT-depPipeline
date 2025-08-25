@@ -100,19 +100,21 @@ export default function CreateProposalDialog({ onClose, onProposalCreated }) {
     }
   };
 
-  const processParsedData = (data) => {
-    // Attempt to match existing client by email
-    let matchedClient = null;
-    
-    if (data.client_email) {
-      matchedClient = clients.find(c => 
-        c.email && c.email.toLowerCase() === data.client_email.toLowerCase()
-      );
-    }
+const processParsedData = (data) => {
+  // Attempt to match existing client by email
+  let matchedClient = null;
+  
+  if (data.client_email) {
+    matchedClient = clients.find(c => 
+      c.email && c.email.toLowerCase() === data.client_email.toLowerCase()
+    );
+  }
 
-    if (matchedClient) {
-      // Found existing client
-      setFormData(prev => ({
+  if (matchedClient) {
+    
+    // Found existing client - use extracted data preferentially
+    setFormData(prev => {
+      const newFormData = {
         ...prev,
         title: data.title || data.project_title || prev.title,
         project_type: data.project_type || prev.project_type,
@@ -121,12 +123,18 @@ export default function CreateProposalDialog({ onClose, onProposalCreated }) {
         total_fee: data.total_fee ? data.total_fee.toString() : prev.total_fee,
         timeline: data.timeline || prev.timeline,
         client: matchedClient.id
-      }));
-      setSelectedClientInfo(matchedClient);
-      setIsNewClient(false);
-    } else {
-      // No existing client found, prepare for new client creation
-      setFormData(prev => ({
+      };
+      
+      return newFormData;
+    });
+    
+    setSelectedClientInfo(matchedClient);
+    setIsNewClient(false);
+  } else {
+    
+    // No existing client found, prepare for new client creation
+    setFormData(prev => {
+      const newFormData = {
         ...prev,
         title: data.title || data.project_title || prev.title,
         project_type: data.project_type || prev.project_type,
@@ -135,19 +143,22 @@ export default function CreateProposalDialog({ onClose, onProposalCreated }) {
         total_fee: data.total_fee ? data.total_fee.toString() : prev.total_fee,
         timeline: data.timeline || prev.timeline,
         client: ""
-      }));
-      
-      setClientData({
-        name: data.client_name || "",
-        email: data.client_email || "",
-        company: data.client_company || ""
-      });
-      
-      if (data.client_email || data.client_name) {
-        setIsNewClient(true);
-      }
+      };
+      return newFormData;
+    });
+    
+    setClientData({
+      name: data.client_name || "",
+      email: data.client_email || "",
+      company: data.client_company || ""
+    });
+    
+    if (data.client_email || data.client_name) {
+      setIsNewClient(true);
     }
-  };
+  }
+
+};
 
   const handleDocumentUpload = async (file) => {
     setDocumentFile(file);
@@ -186,86 +197,383 @@ export default function CreateProposalDialog({ onClose, onProposalCreated }) {
     setAiDocProcessing(false);
   };
   
-  const handleParseText = async () => {
-    if (!pastedText.trim()) {
-      alert("Please paste the proposal text into the text area first.");
+// Improved handleParseText function with better error handling and debugging
+// Enhanced handleParseText with better prompting and fallback extraction
+const handleParseText = async () => {
+  if (!pastedText.trim()) {
+    alert("Please paste the proposal text into the text area first.");
+    return;
+  }
+  
+  
+  setAiParsingText(true);
+  try {
+    // Pre-analysis with regex patterns
+    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+    const moneyRegex = /(?:\$|USD|dollars?)\s*(\d+(?:,\d{3})*(?:\.\d{2})?)/gi;
+    
+    const foundEmails = pastedText.match(emailRegex) || [];
+    const foundMoney = pastedText.match(moneyRegex) || [];
+    
+    // Create a more aggressive extraction prompt
+    const extractionPrompt = `TASK: Extract business proposal information from the provided text.
+
+INSTRUCTIONS:
+- Be VERY LIBERAL in your interpretation
+- If something MIGHT be a project title, extract it
+- If you see ANY name mentioned, consider it a potential client name  
+- If you see ANY business/company mentioned, extract it
+- For project type, look for keywords like: API, integration, automation, workflow, website, web, app, application, system, database, etc.
+- Extract ANY dollar amounts, numbers that could be fees
+- Extract ANY time references (days, weeks, months)
+- If information seems incomplete, make reasonable assumptions
+- Don't return null unless absolutely nothing is found
+
+PROJECT TYPE MAPPING:
+- "integrations" = API connections, system integrations, third-party connections
+- "automations" = workflows, process automation, business automation  
+- "automations+integrations" = combination projects
+- "apps" = software development, custom applications, mobile apps
+- "websites" = web development, website creation, web applications
+
+TEXT TO ANALYZE:
+---START TEXT---
+${pastedText}
+---END TEXT---
+
+EXTRACT as much as possible into this JSON structure:`;
+
+
+    const response = await InvokeLLM({
+      prompt: extractionPrompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          title: { 
+            type: ["string", "null"], 
+            description: "Any text that could be a project title, subject, or heading" 
+          },
+          client_name: { 
+            type: ["string", "null"], 
+            description: "Any person's name mentioned in the text" 
+          },
+          client_email: { 
+            type: ["string", "null"], 
+            description: "Any email address found" 
+          },
+          client_company: { 
+            type: ["string", "null"], 
+            description: "Any company, business, or organization name" 
+          },
+          project_type: { 
+            type: ["string", "null"], 
+            enum: [...projectTypes.map(p => p.key), null],
+            description: "Map content keywords to project categories" 
+          },
+          description: { 
+            type: ["string", "null"], 
+            description: "Main project description or requirements" 
+          },
+          scope_of_work: { 
+            type: ["string", "null"], 
+            description: "Detailed work breakdown, deliverables, or tasks" 
+          },
+          total_fee: { 
+            type: ["number", "null"], 
+            description: "Any monetary amount mentioned" 
+          },
+          timeline: { 
+            type: ["string", "null"], 
+            description: "Any time references or deadlines" 
+          },
+        },
+        additionalProperties: false
+      },
+      temperature: 0.1, // Lower temperature for more consistent extraction
+      max_tokens: 2000
+    });
+    
+
+    // Handle both parsed JSON response and raw text response
+    let parsedData;
+    if (response?.result && typeof response.result === 'string') {
+      // Response has a result property with JSON string - this is your case
+      try {
+        parsedData = JSON.parse(response.result);
+      } catch (parseError) {
+        console.error('Failed to parse JSON from result property:', parseError);
+        alert('AI returned invalid JSON format in result. Please try again.');
+        return;
+      }
+    } else if (typeof response === 'object' && response !== null && !response.result) {
+      // Response is already parsed JSON object
+      parsedData = response;
+    } else if (typeof response === 'string') {
+      // Response is a JSON string, try to parse it
+      try {
+        parsedData = JSON.parse(response);
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', parseError);
+        alert('AI returned invalid JSON format. Please try again.');
+        return;
+      }
+    } else {
+      console.error('Unexpected response format:', response);
+      alert('AI returned unexpected response format. Please try again.');
       return;
+    }
+
+    
+    if (parsedData && typeof parsedData === 'object') {
+      // Apply regex fallbacks for obvious patterns AI might have missed
+      const enhancedData = { ...parsedData };
+      
+      // Email fallback
+      if (!enhancedData.client_email && foundEmails.length > 0) {
+        enhancedData.client_email = foundEmails[0];
+      }
+      
+      // Money fallback
+      if (!enhancedData.total_fee && foundMoney.length > 0) {
+        const cleanAmount = foundMoney[0].replace(/[^\d.]/g, '');
+        const numericAmount = parseFloat(cleanAmount);
+        if (!isNaN(numericAmount)) {
+          enhancedData.total_fee = numericAmount;
+        }
+      }
+      
+      // Smart title extraction if missing
+      if (!enhancedData.title && pastedText.length < 200) {
+        // If text is short, use the whole thing as potential title
+        const lines = pastedText.split('\n').filter(line => line.trim().length > 0);
+        if (lines.length > 0) {
+          enhancedData.title = lines[0].trim().substring(0, 100);
+        }
+      }
+      
+      // Project type inference from keywords
+      if (!enhancedData.project_type) {
+        const text = pastedText.toLowerCase();
+        if (text.includes('api') || text.includes('integration') || text.includes('connect')) {
+          enhancedData.project_type = 'integrations';
+        } else if (text.includes('automation') || text.includes('workflow') || text.includes('process')) {
+          enhancedData.project_type = 'automations';
+        } else if (text.includes('website') || text.includes('web')) {
+          enhancedData.project_type = 'websites';
+        } else if (text.includes('app') || text.includes('software') || text.includes('system')) {
+          enhancedData.project_type = 'apps';
+        }
+        
+        if (enhancedData.project_type) {
+          console.log('🎯 Applied project type inference:', enhancedData.project_type);
+        }
+      }
+      
+      // Check if we extracted anything useful
+      const extractedValues = Object.values(enhancedData).filter(value => 
+        value !== null && value !== "" && value !== undefined
+      );
+      
+      if (extractedValues.length > 0) {
+        processParsedData(enhancedData);
+        
+        // Show success feedback
+        const extractedFields = Object.entries(enhancedData)
+          .filter(([key, value]) => value !== null && value !== "" && value !== undefined)
+          .map(([key]) => key)
+          .join(', ');
+        
+        alert(`✅ Successfully extracted: ${extractedFields}`);
+      } else {
+        console.warn('⚠️ No meaningful data extracted');
+        alert('AI could not extract meaningful information from the provided text. The text might be too short, unclear, or not contain proposal-related information. Please try:\n\n1. Adding more context to your text\n2. Including specific details like amounts, names, or project descriptions\n3. Filling the form manually');
+      }
+    } else {
+      console.error('❌ Invalid parsed data format:', parsedData);
+      alert("AI parsing returned invalid data format. Please try again or fill the form manually.");
+    }
+
+  } catch(error) {
+    console.error("💥 Error in AI text parsing:", error);
+    
+    let errorMessage = "AI text parsing failed. ";
+    if (error.response?.data?.error) {
+      errorMessage += error.response.data.error;
+    } else if (error.message) {
+      errorMessage += error.message;
+    } else {
+      errorMessage += "Please try again or fill the form manually.";
     }
     
-    setAiParsingText(true);
-    try {
-      const parsedData = await InvokeLLM({
-        prompt: `You are a data extraction tool. Read the following text and extract the specified information into a JSON object. Do not invent, infer, or modify any data. If a piece of information is not present, leave the corresponding field in the JSON null. If multiple matches are found for a string field, return the most prominent one. For project_type, use one of the following exact keys: ${projectTypes.map(p => p.key).join(', ')}. If none match, return null. Here is the text to parse: \n\n---START TEXT---\n${pastedText}\n---END TEXT---`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            title: { type: "string", description: "The main title of the project." },
-            client_name: { type: "string", description: "The full name of the client contact." },
-            client_email: { type: "string", description: "The email address of the client." },
-            client_company: { type: "string", description: "The company name of the client." },
-            project_type: { type: "string", enum: projectTypes.map(p => p.key), description: "The type of project. Must be one of the provided enum values." },
-            description: { type: "string", description: "A summary or high-level description of the project." },
-            scope_of_work: { type: "string", description: "The detailed scope of work, including all deliverables and phases." },
-            total_fee: { type: "number", description: "The total numerical fee for the project." },
-            timeline: { type: "string", description: "The estimated project timeline (e.g., '8-12 weeks')." },
-          }
-        }
-      });
-      
-      if (parsedData) {
-        processParsedData(parsedData);
-      }
-
-    } catch(error) {
-      console.error("Error parsing text with AI:", error);
-      alert("AI text parsing failed. Please check the text and try again, or fill the form manually.");
-    }
+    alert(errorMessage);
+  } finally {
     setAiParsingText(false);
-  };
+  }
+};
 
-  const handleAIGenerate = async () => {
-    if (!formData.project_type || !formData.description) {
-      alert("Please select project type and provide description first");
+// Alternative simpler extraction for very minimal text
+const handleSimpleParseText = async () => {
+  if (!pastedText.trim()) {
+    alert("Please paste some text first.");
+    return;
+  }
+  
+  setAiParsingText(true);
+  
+  try {
+    // For very simple/short text, use a different approach
+    const simplePrompt = `You have this text: "${pastedText}"
+
+This appears to be related to a business proposal or project request. 
+
+Based on this text, fill out as much information as you can reasonably infer:
+
+1. What could be the project title?
+2. What type of project is this? (choose: integrations, automations, apps, websites, or automations+integrations)
+3. What is the project about?
+4. Any client information mentioned?
+5. Any costs or timeline mentioned?
+
+Be creative and make reasonable assumptions. If "Server setup for nexa" was the text, you might infer:
+- Title: "Server Setup Project" 
+- Type: "integrations" (server work often involves system integration)
+- Description: "Server infrastructure setup and configuration for Nexa"
+
+Return your analysis as JSON:`;
+
+    const result = await InvokeLLM({
+      prompt: simplePrompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          title: { type: ["string", "null"] },
+          client_name: { type: ["string", "null"] },
+          client_email: { type: ["string", "null"] },
+          client_company: { type: ["string", "null"] },
+          project_type: { type: ["string", "null"], enum: [...projectTypes.map(p => p.key), null] },
+          description: { type: ["string", "null"] },
+          scope_of_work: { type: ["string", "null"] },
+          total_fee: { type: ["number", "null"] },
+          timeline: { type: ["string", "null"] },
+        }
+      }
+    });
+    
+    if (result) {
+      processParsedData(result);
+    }
+    
+  } catch (error) {
+    console.error("Simple parsing failed:", error);
+    alert("Text parsing failed. Please fill the form manually.");
+  } finally {
+    setAiParsingText(false);
+  }
+};
+
+const handleAIGenerate = async () => {
+  if (!formData.project_type || !formData.description) {
+    alert("Please select project type and provide description first");
+    return;
+  }
+
+  setAiLoading(true);
+  try {
+    const response = await InvokeLLM({
+      prompt: `Generate a detailed, professional scope of work for a ${formData.project_type} project. 
+      
+      Project description: ${formData.description}
+      
+      Create a comprehensive scope that includes:
+      - Project overview
+      - Key deliverables
+      - Technical requirements
+      - Implementation phases
+      - Success criteria
+      
+      Make it professional and detailed for a tech systems integration company.`,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          scope_of_work: { type: "string" },
+          suggested_timeline: { type: "string" }
+        }
+      }
+    });
+
+
+    // Handle different response formats
+    let result;
+    if (response?.result && typeof response.result === 'string') {
+      // Response has a result property with JSON string
+      try {
+        result = JSON.parse(response.result);
+      } catch (parseError) {
+        console.error('Failed to parse JSON from result property:', parseError);
+        alert('AI returned invalid JSON format. Please try again.');
+        setAiLoading(false);
+        return;
+      }
+    } else if (typeof response === 'object' && response !== null && (response.scope_of_work || response.suggested_timeline)) {
+      // Response is already the parsed object
+      result = response;
+    } else if (typeof response === 'string') {
+      // Response is a JSON string
+      try {
+        result = JSON.parse(response);
+      } catch (parseError) {
+        console.error('Failed to parse JSON response:', parseError);
+        alert('AI returned invalid JSON format. Please try again.');
+        setAiLoading(false);
+        return;
+      }
+    } else {
+      console.error('Unexpected AI generate response format:', response);
+      alert('AI returned unexpected response format. Please try again.');
+      setAiLoading(false);
       return;
     }
 
-    setAiLoading(true);
-    try {
-      const result = await InvokeLLM({
-        prompt: `Generate a detailed, professional scope of work for a ${formData.project_type} project. 
-        
-        Project description: ${formData.description}
-        
-        Create a comprehensive scope that includes:
-        - Project overview
-        - Key deliverables
-        - Technical requirements
-        - Implementation phases
-        - Success criteria
-        
-        Make it professional and detailed for a tech systems integration company.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            scope_of_work: { type: "string" },
-            suggested_timeline: { type: "string" }
-          }
-        }
-      });
+    if (result && (result.scope_of_work || result.suggested_timeline)) {
 
-      if (result) {
-        setFormData(prev => ({
+      setFormData(prev => {
+        const updated = {
           ...prev,
           scope_of_work: result.scope_of_work || prev.scope_of_work,
           timeline: result.suggested_timeline || prev.timeline
-        }));
+        };
+        
+        return updated;
+      });
+
+      // Show success message
+      const generatedFields = [];
+      if (result.scope_of_work) generatedFields.push('Scope of Work');
+      if (result.suggested_timeline) generatedFields.push('Timeline');
+      
+      if (generatedFields.length > 0) {
+        alert(`✅ AI Generated: ${generatedFields.join(' and ')}`);
       }
-    } catch (error) {
-      console.error("Error generating AI content:", error);
-      alert("AI generation failed. Please try again or fill manually.");
+    } else {
+      console.warn('⚠️ AI response missing expected fields:', result);
+      alert('AI generated content but it was empty. Please try again.');
     }
-    setAiLoading(false);
-  };
+  } catch (error) {
+    console.error("💥 Error generating AI content:", error);
+    
+    let errorMessage = "AI generation failed. ";
+    if (error.response?.data?.error) {
+      errorMessage += error.response.data.error;
+    } else if (error.message) {
+      errorMessage += error.message;
+    } else {
+      errorMessage += "Please try again or fill manually.";
+    }
+    
+    alert(errorMessage);
+  }
+  setAiLoading(false);
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -341,8 +649,6 @@ export default function CreateProposalDialog({ onClose, onProposalCreated }) {
           }
         }
       });
-
-      console.log('Sending proposal data:', proposalData);
 
       await Proposal.create(proposalData);
       onProposalCreated();
