@@ -47,47 +47,90 @@ export default function AddExpenseDialog({ projects, onClose, onExpenseAdded }) 
   const [aiProcessing, setAiProcessing] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleFileUpload = async (file) => {
-    setReceiptFile(file);
-    setAiProcessing(true);
+const handleFileUpload = async (file) => {
+  setReceiptFile(file);
+  setAiProcessing(true);
+  
+  try {
+    // Upload the file first
+    const uploadResult = await UploadFile({ file });
+    console.log('Upload result:', uploadResult);
     
-    try {
-      // Upload the file first
-      const { file_url } = await UploadFile({ file });
-      
-      // Extract data using AI
-      const extractResult = await ExtractDataFromUploadedFile({
-        file_url,
-        json_schema: {
-          type: "object",
-          properties: {
-            vendor: { type: "string" },
-            amount: { type: "number" },
-            date: { type: "string" },
-            description: { type: "string" },
-            category: { type: "string" }
-          }
-        }
-      });
-
-      if (extractResult.status === "success" && extractResult.output) {
-        const data = extractResult.output;
-        setFormData(prev => ({
-          ...prev,
-          title: data.description || prev.title,
-          amount: data.amount ? data.amount.toString() : prev.amount,
-          vendor: data.vendor || prev.vendor,
-          date: data.date || prev.date,
-          receipt_url: file_url,
-          extracted_data: data
-        }));
-      }
-    } catch (error) {
-      console.error("Error processing receipt:", error);
+    // Extract file path and URL from upload response
+    const fileUrl = uploadResult.file_url;
+    const filePath = uploadResult.file_path;
+    
+    if (!fileUrl && !filePath) {
+      throw new Error('No file URL or path returned from upload');
     }
     
-    setAiProcessing(false);
-  };
+    // Call the extraction endpoint with correct parameters
+    const extractResult = await ExtractDataFromUploadedFile(fileUrl, {
+      file_path: filePath, // Include file_path for direct file reading
+      json_schema: {
+        type: "object",
+        properties: {
+          vendor: { type: ["string", "null"] },
+          amount: { type: ["number", "null"] },
+          date: { type: ["string", "null"] },
+          description: { type: ["string", "null"] },
+          category: { 
+            type: ["string", "null"],
+            enum: [...categories.map(c => c.key), null]
+          }
+        },
+        additionalProperties: false
+      }
+    });
+
+    console.log('Extract result:', extractResult);
+
+    if (extractResult.status === "success" && extractResult.output) {
+      const data = extractResult.output;
+      setFormData(prev => ({
+        ...prev,
+        title: data.description || prev.title,
+        amount: data.amount ? data.amount.toString() : prev.amount,
+        vendor: data.vendor || prev.vendor,
+        date: data.date || prev.date,
+        category: data.category || prev.category,
+        receipt_url: fileUrl,
+        extracted_data: data
+      }));
+      
+      // Show success message with extracted fields
+      const extractedFields = Object.entries(data)
+        .filter(([key, value]) => value !== null && value !== "" && value !== undefined)
+        .map(([key]) => key)
+        .join(', ');
+      
+      if (extractedFields) {
+        alert(`Successfully extracted from receipt: ${extractedFields}`);
+      }
+    } else if (extractResult.error) {
+      console.error('Extraction failed:', extractResult.error);
+      alert(`AI processing failed: ${extractResult.error}`);
+    } else {
+      console.warn('No data extracted from receipt');
+      alert('AI could not extract meaningful information from this receipt. Please fill the form manually.');
+    }
+  } catch (error) {
+    console.error("Error processing receipt:", error);
+    
+    let errorMessage = "AI processing failed. ";
+    if (error.response?.data?.error) {
+      errorMessage += error.response.data.error;
+    } else if (error.message) {
+      errorMessage += error.message;
+    } else {
+      errorMessage += "Please try again or fill the form manually.";
+    }
+    
+    alert(errorMessage);
+  }
+  
+  setAiProcessing(false);
+};
 
   const handleSubmit = async (e) => {
     e.preventDefault();

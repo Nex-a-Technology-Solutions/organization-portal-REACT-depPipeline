@@ -160,43 +160,85 @@ const processParsedData = (data) => {
 
 };
 
-  const handleDocumentUpload = async (file) => {
-    setDocumentFile(file);
-    setAiDocProcessing(true);
+const handleDocumentUpload = async (file) => {
+  setDocumentFile(file);
+  setAiDocProcessing(true);
+  
+  try {
+    // First, upload the file
+    const uploadResult = await UploadFile({ file });
+    console.log('Upload result:', uploadResult);
     
-    try {
-      const { file_url } = await UploadFile({ file });
-      
-      const extractResult = await ExtractDataFromUploadedFile({
-        file_url,
-        json_schema: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            project_title: { type: "string" },
-            client_name: { type: "string" },
-            client_email: { type: "string" },
-            client_company: { type: "string" },
-            project_type: { type: "string", enum: projectTypes.map(p => p.key) },
-            description: { type: "string" },
-            scope_of_work: { type: "string" },
-            total_fee: { type: "number" },
-            timeline: { type: "string" },
-          }
-        }
-      });
-
-      if (extractResult.status === "success" && extractResult.output) {
-        processParsedData(extractResult.output);
-      }
-    } catch (error) {
-      console.error("Error processing document:", error);
-      alert("AI processing failed. Please fill the form manually.");
+    // Extract file path and URL from upload response
+    const fileUrl = uploadResult.file_url;
+    const filePath = uploadResult.file_path;
+    
+    if (!fileUrl && !filePath) {
+      throw new Error('No file URL or path returned from upload');
     }
     
-    setAiDocProcessing(false);
-  };
+    // Call the extraction endpoint with both file_url and file_path
+    const extractResult = await ExtractDataFromUploadedFile(fileUrl, {
+      file_path: filePath, // Include file_path for direct file reading
+      json_schema: {
+        type: "object",
+        properties: {
+          title: { type: ["string", "null"] },
+          project_title: { type: ["string", "null"] },
+          client_name: { type: ["string", "null"] },
+          client_email: { type: ["string", "null"] },
+          client_company: { type: ["string", "null"] },
+          project_type: { 
+            type: ["string", "null"], 
+            enum: [...projectTypes.map(p => p.key), null] 
+          },
+          description: { type: ["string", "null"] },
+          scope_of_work: { type: ["string", "null"] },
+          total_fee: { type: ["number", "null"] },
+          timeline: { type: ["string", "null"] },
+        },
+        additionalProperties: false
+      }
+    });
+
+    console.log('Extract result:', extractResult);
+
+    if (extractResult.status === "success" && extractResult.output) {
+      processParsedData(extractResult.output);
+      
+      // Show success message with extracted fields
+      const extractedFields = Object.entries(extractResult.output)
+        .filter(([key, value]) => value !== null && value !== "" && value !== undefined)
+        .map(([key]) => key)
+        .join(', ');
+      
+      if (extractedFields) {
+        alert(`✅ Successfully extracted from document: ${extractedFields}`);
+      }
+    } else if (extractResult.error) {
+      console.error('Extraction failed:', extractResult.error);
+      alert(`AI processing failed: ${extractResult.error}`);
+    } else {
+      console.warn('No data extracted from document');
+      alert('AI could not extract meaningful information from this document. Please try a different file or fill the form manually.');
+    }
+  } catch (error) {
+    console.error("Error processing document:", error);
+    
+    let errorMessage = "AI processing failed. ";
+    if (error.response?.data?.error) {
+      errorMessage += error.response.data.error;
+    } else if (error.message) {
+      errorMessage += error.message;
+    } else {
+      errorMessage += "Please try again or fill the form manually.";
+    }
+    
+    alert(errorMessage);
+  }
   
+  setAiDocProcessing(false);
+};
 // Improved handleParseText function with better error handling and debugging
 // Enhanced handleParseText with better prompting and fallback extraction
 const handleParseText = async () => {

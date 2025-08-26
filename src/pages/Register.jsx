@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, AlertCircle, CheckCircle, Mail, Lock, User, Phone, DollarSign, Briefcase } from "lucide-react";
+import { UserPlus, AlertCircle, CheckCircle, Mail, Lock, User, Phone, DollarSign, Briefcase, Shield } from "lucide-react";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -21,17 +21,27 @@ export default function Register() {
     phone: "",
     specialization: "",
     hourly_rate: "",
-    access_level: "staff"
+    access_level: "staff",
+    access_code: ""
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const REQUIRED_ACCESS_CODE = "nex-a25AutoLab";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError("");
     setSuccess("");
+
+    // Validate access code first
+    if (formData.access_code !== REQUIRED_ACCESS_CODE) {
+      setError("Invalid access code. Please contact your administrator for the correct access code.");
+      setSubmitting(false);
+      return;
+    }
 
     // Basic validation
     if (formData.password !== formData.password_confirm) {
@@ -123,6 +133,25 @@ export default function Register() {
           )}
           
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Access Code Field */}
+            <div>
+              <Label htmlFor="access_code" className="flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                Access Code
+              </Label>
+              <Input
+                id="access_code"
+                type="password"
+                value={formData.access_code}
+                onChange={(e) => handleInputChange('access_code', e.target.value)}
+                placeholder="Enter the required access code"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Contact your administrator if you don't have the access code.
+              </p>
+            </div>
+
             {/* Basic Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

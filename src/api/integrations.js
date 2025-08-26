@@ -29,7 +29,7 @@ export const Core = {
     }
   },
 
-  UploadFile: async (fileData) => {
+ UploadFile: async (fileData) => {
     try {
       // Create FormData for file upload
       const formData = new FormData();
@@ -71,10 +71,14 @@ export const Core = {
     }
   },
 
-  ExtractDataFromUploadedFile: async (fileId, extractionOptions = {}) => {
+  // FIXED: Send file_url in request body, not URL path
+  ExtractDataFromUploadedFile: async (fileUrl, extractionOptions = {}) => {
     try {
-      // You'll need to create this endpoint in Django
-      const response = await djangoClient.getClient().post(`/integrations/file/${fileId}/extract/`, extractionOptions);
+      // POST to /integrations/file/extract/ with file_url in body
+      const response = await djangoClient.getClient().post('/integrations/file/extract/', {
+        file_url: fileUrl,
+        ...extractionOptions
+      });
       return response.data;
     } catch (error) {
       console.error('Error extracting data from file:', error);
