@@ -5,13 +5,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { X, Upload, FileText, Image, FileImage, Download, Trash2, Eye } from 'lucide-react';
+import { X, Upload, FileText, Image, FileImage, Download, Trash2, Eye, Loader2 } from 'lucide-react';
 
 const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({});
   const [projectFiles, setProjectFiles] = useState(project.files || []);
   const [dragOver, setDragOver] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(false);
 
   const fileTypeOptions = [
     { value: 'document', label: 'Document' },
@@ -67,6 +69,12 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
 
   const removeFile = (fileId) => {
     setFiles(prev => prev.filter(f => f.id !== fileId));
+    // Clean up upload progress for removed file
+    setUploadProgress(prev => {
+      const newProgress = { ...prev };
+      delete newProgress[fileId];
+      return newProgress;
+    });
   };
 
   const updateFileDetails = (fileId, field, value) => {
@@ -79,40 +87,91 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
     if (files.length === 0) return;
     
     setUploading(true);
+    setUploadProgress({});
     
     try {
-      for (const fileData of files) {
-        const formData = new FormData();
-        formData.append('file', fileData.file);
-        formData.append('name', fileData.name);
-        formData.append('description', fileData.description);
-        formData.append('file_type', fileData.file_type);
+      const { djangoClient } = await import("@/api/client");
+      const apiClient = djangoClient.getClient();
 
-        const { djangoClient } = await import("@/api/client");
-        const apiClient = djangoClient.getClient();
-        
-        await apiClient.post(`/projects/${project.id}/upload_file/`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+      for (const [index, fileData] of files.entries()) {
+        // Set current file as uploading
+        setUploadProgress(prev => ({
+          ...prev,
+          [fileData.id]: { status: 'uploading', progress: 0 }
+        }));
+
+        try {
+          const formData = new FormData();
+          formData.append('file', fileData.file);
+          formData.append('name', fileData.name);
+          formData.append('description', fileData.description);
+          formData.append('file_type', fileData.file_type);
+          
+          await apiClient.post(`/projects/${project.id}/upload_file/`, formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+            onUploadProgress: (progressEvent) => {
+              const percentCompleted = Math.round(
+                (progressEvent.loaded * 100) / progressEvent.total
+              );
+              setUploadProgress(prev => ({
+                ...prev,
+                [fileData.id]: { status: 'uploading', progress: percentCompleted }
+              }));
+            }
+          });
+
+          // Mark file as completed
+          setUploadProgress(prev => ({
+            ...prev,
+            [fileData.id]: { status: 'completed', progress: 100 }
+          }));
+        } catch (fileError) {
+          console.error(`Error uploading file ${fileData.name}:`, fileError);
+          // Mark this specific file as failed
+          setUploadProgress(prev => ({
+            ...prev,
+            [fileData.id]: { status: 'error', progress: 0 }
+          }));
+        }
       }
       
       // Refresh project files
-      const response = await apiClient.get(`/projects/${project.id}/files/`);
-      setProjectFiles(response.data);
+      setLoadingFiles(true);
+      try {
+        const response = await apiClient.get(`/projects/${project.id}/files/`);
+        setProjectFiles(response.data);
+        onFilesUpdated && onFilesUpdated();
+      } catch (refreshError) {
+        console.error('Error refreshing files:', refreshError);
+      } finally {
+        setLoadingFiles(false);
+      }
       
       setFiles([]);
-      onFilesUpdated && onFilesUpdated();
+      setUploadProgress({});
       
     } catch (error) {
-      console.error('Error uploading files:', error);
+      console.error('Error in upload process:', error);
+      // Mark all uploading files as failed
+      setUploadProgress(prev => {
+        const newProgress = { ...prev };
+        Object.keys(newProgress).forEach(fileId => {
+          if (newProgress[fileId].status === 'uploading') {
+            newProgress[fileId] = { status: 'error', progress: 0 };
+          }
+        });
+        return newProgress;
+      });
+      setLoadingFiles(false);
+    } finally {
+      setUploading(false);
     }
-    
-    setUploading(false);
   };
 
   const deleteFile = async (fileId) => {
+    setLoadingFiles(true);
     try {
       const { djangoClient } = await import("@/api/client");
       const apiClient = djangoClient.getClient();
@@ -127,6 +186,8 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
       
     } catch (error) {
       console.error('Error deleting file:', error);
+    } finally {
+      setLoadingFiles(false);
     }
   };
 
@@ -144,17 +205,70 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
     return <FileText className="w-4 h-4" />;
   };
 
+  const getUploadStatus = (fileId) => {
+    const progress = uploadProgress[fileId];
+    if (!progress) return null;
+
+    switch (progress.status) {
+      case 'uploading':
+        return (
+          <div className="flex items-center space-x-2">
+            <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+            <div className="flex-1 bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress.progress}%` }}
+              />
+            </div>
+            <span className="text-sm text-blue-600">{progress.progress}%</span>
+          </div>
+        );
+      case 'completed':
+        return (
+          <div className="flex items-center space-x-2 text-green-600">
+            <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+              <div className="w-2 h-2 bg-white rounded-full" />
+            </div>
+            <span className="text-sm">Uploaded successfully</span>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="flex items-center space-x-2 text-red-600">
+            <div className="w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
+              <X className="w-2 h-2 text-white" />
+            </div>
+            <span className="text-sm">Upload failed</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto m-4">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Project Files - {project.title}</CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={uploading}>
             <X className="w-4 h-4" />
           </Button>
         </CardHeader>
         
         <CardContent className="space-y-6">
+          {/* Upload Progress Overlay */}
+          {uploading && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center space-x-3">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                <span className="text-blue-700 font-medium">
+                  Uploading files... ({Object.values(uploadProgress).filter(p => p.status === 'completed').length}/{files.length})
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* File Upload Section */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Upload New Files</h3>
@@ -162,7 +276,7 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
             <div
               className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
                 dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
+              } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -177,6 +291,7 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
                     multiple
                     className="hidden"
                     onChange={(e) => addFiles(e.target.files)}
+                    disabled={uploading}
                   />
                 </label>
               </p>
@@ -202,8 +317,14 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
                             onChange={(e) => updateFileDetails(file.id, 'name', e.target.value)}
                             placeholder="File name"
                             className="font-medium"
+                            disabled={uploading}
                           />
-                          <Button variant="ghost" size="sm" onClick={() => removeFile(file.id)}>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => removeFile(file.id)}
+                            disabled={uploading}
+                          >
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
@@ -213,11 +334,13 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
                           placeholder="File description (optional)"
                           className="resize-none"
                           rows={2}
+                          disabled={uploading}
                         />
                         <div className="flex items-center space-x-4">
                           <Select 
                             value={file.file_type} 
                             onValueChange={(value) => updateFileDetails(file.id, 'file_type', value)}
+                            disabled={uploading}
                           >
                             <SelectTrigger className="w-40">
                               <SelectValue />
@@ -234,17 +357,33 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
                             {formatFileSize(file.file.size)}
                           </span>
                         </div>
+                        
+                        {/* Upload Status for Individual Files */}
+                        <div className="mt-3">
+                          {getUploadStatus(file.id)}
+                        </div>
                       </div>
                     </div>
                   </Card>
                 ))}
                 
                 <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setFiles([])}>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setFiles([])}
+                    disabled={uploading}
+                  >
                     Clear All
                   </Button>
-                  <Button onClick={uploadFiles} disabled={uploading}>
-                    {uploading ? 'Uploading...' : `Upload ${files.length} Files`}
+                  <Button onClick={uploadFiles} disabled={uploading || files.length === 0}>
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Uploading...
+                      </>
+                    ) : (
+                      `Upload ${files.length} Files`
+                    )}
                   </Button>
                 </div>
               </div>
@@ -257,6 +396,12 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
               <h3 className="text-lg font-semibold">
                 Existing Files ({projectFiles.length})
               </h3>
+              {loadingFiles && (
+                <div className="flex items-center space-x-2 text-blue-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Refreshing files...</span>
+                </div>
+              )}
             </div>
             
             {projectFiles.length === 0 ? (
@@ -318,6 +463,7 @@ const FileUploadDialog = ({ project, onClose, onFilesUpdated }) => {
                           size="sm"
                           onClick={() => deleteFile(file.id)}
                           className="text-red-600 hover:text-red-700"
+                          disabled={loadingFiles}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
