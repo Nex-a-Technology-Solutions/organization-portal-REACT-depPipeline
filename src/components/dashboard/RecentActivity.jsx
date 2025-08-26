@@ -51,7 +51,6 @@ const formatDate = (dateString) => {
 };
 
 export default function RecentActivity({ projects, invoices, userRole }) {
-  console.log('RecentActivity received:', { projects, invoices, userRole }); // Debug log
 
   // Combine and sort recent items by date
   const recentItems = [];
@@ -59,7 +58,6 @@ export default function RecentActivity({ projects, invoices, userRole }) {
   // Add projects to recent items - using the EXACT field names from Projects component
   if (projects && Array.isArray(projects)) {
     projects.forEach(project => {
-      console.log('Processing project:', project); // Debug log
       recentItems.push({
         type: 'project',
         id: project.id,
@@ -78,7 +76,6 @@ export default function RecentActivity({ projects, invoices, userRole }) {
   // Add invoices to recent items (for non-client users) - using exact field names from Invoices component
   if (userRole !== "client" && invoices && Array.isArray(invoices)) {
     invoices.forEach(invoice => {
-      console.log('Processing invoice:', invoice); // Debug log
       recentItems.push({
         type: 'invoice',
         id: invoice.id,
@@ -92,7 +89,6 @@ export default function RecentActivity({ projects, invoices, userRole }) {
     });
   }
 
-  console.log('Combined recent items before sorting:', recentItems); // Debug log
 
   // Sort by date (most recent first)
   recentItems.sort((a, b) => {
@@ -103,8 +99,6 @@ export default function RecentActivity({ projects, invoices, userRole }) {
 
   // Take only the first 8 items
   const displayItems = recentItems.slice(0, 8);
-  
-  console.log('Final display items:', displayItems); // Debug log
 
   return (
     <Card className="bg-white/80 backdrop-blur-sm border-slate-200/80 shadow-lg">
