@@ -63,8 +63,6 @@ const loadDashboardData = async () => {
   try {
     const userData = await User.me();
     setUser(userData);
-    
-    console.log("Dashboard: User data loaded:", userData);
 
     let projectsData = [];
     let invoicesData = [];
@@ -81,7 +79,6 @@ const loadDashboardData = async () => {
     }
 
     if (userData.access_level === "admin") {
-      console.log("Dashboard: Loading data for admin user");
       
       try {
         // Updated notification loading - use filter method with proper parameters
@@ -94,21 +91,18 @@ const loadDashboardData = async () => {
           notificationPromise
         ]);
         
-        console.log("Dashboard: Admin data loaded - Projects:", projectsData.length, "Invoices:", invoicesData.length, "Notifications:", notificationsData.length);
       } catch (error) {
         console.error("Dashboard: Error loading admin data:", error);
         
         // Try loading individually if Promise.all fails
         try {
           projectsData = await Project.list("-updated_date", 20);
-          console.log("Dashboard: Individual project load - Projects:", projectsData.length);
         } catch (projectError) {
           console.error("Dashboard: Error loading projects:", projectError);
         }
         
         try {
           invoicesData = await Invoice.list("-created_date", 10);
-          console.log("Dashboard: Individual invoice load - Invoices:", invoicesData.length);
         } catch (invoiceError) {
           console.error("Dashboard: Error loading invoices:", invoiceError);
         }
@@ -121,7 +115,6 @@ const loadDashboardData = async () => {
         
         try {
           notificationsData = await Notification.filter({ is_read: false }, "-created_date", 20);
-          console.log("Dashboard: Individual notification load - Notifications:", notificationsData.length);
         } catch (notificationError) {
           console.error("Dashboard: Error loading notifications:", notificationError);
           notificationsData = []; // Set to empty array on error
@@ -129,7 +122,6 @@ const loadDashboardData = async () => {
       }
       
     } else if (userData.access_level === "staff") {
-      console.log("Dashboard: Loading data for staff user");
       
       try {
         const allTasks = await Task.filter({ assigned_to: userData.email }, "-created_date");
@@ -148,20 +140,16 @@ const loadDashboardData = async () => {
           console.error("Dashboard: Error loading staff notifications:", notificationError);
           notificationsData = [];
         }
-        
-        console.log("Dashboard: Staff data loaded - Projects:", projectsData.length, "Invoices:", invoicesData.length);
       } catch (error) {
         console.error("Dashboard: Error loading staff data:", error);
       }
       
     } else if (userData.access_level === "client") {
-      console.log("Dashboard: Loading data for client user");
       
       try {
         const clientRecord = await Client.filter({ user_id: userData.id }, 1);
         if (clientRecord.length > 0) {
           projectsData = await Project.filter({ client_id: clientRecord[0].id }, "-updated_date", 20);
-          console.log("Dashboard: Client data loaded - Projects:", projectsData.length);
         } else {
           console.log("Dashboard: No client record found for user");
         }
@@ -177,8 +165,6 @@ const loadDashboardData = async () => {
         console.error("Dashboard: Error loading client data:", error);
       }
     }
-
-    console.log("Dashboard: Final data being set - Projects:", projectsData, "Invoices:", invoicesData, "Notifications:", notificationsData);
     
     setProjects(projectsData);
     setInvoices(invoicesData);

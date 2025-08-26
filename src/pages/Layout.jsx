@@ -615,15 +615,6 @@ if (!userData.access_level) {
                 <div className="flex items-center gap-3">
                   <SidebarTrigger className="hover:bg-gray-100 p-2 rounded-lg transition-colors duration-200" />
                   <div className="flex items-center gap-2">
-                    {logoUrl ? (
-                      <div className="w-8 h-8 flex items-center justify-center">
-                        <img src={logoUrl} alt={companyName} className="max-w-full max-h-full object-contain" />
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8 bg-gradient-to-r from-[#1E1E1D] to-gray-800 rounded-xl flex items-center justify-center">
-                        <Zap className="w-4 h-4" style={{ color: primaryColor }} />
-                      </div>
-                    )}
                     <h1 className="text-lg font-bold text-[#1E1E1D]">{companyName}</h1>
                   </div>
                 </div>
