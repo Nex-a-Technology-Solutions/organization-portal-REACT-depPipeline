@@ -167,7 +167,6 @@ const handleDocumentUpload = async (file) => {
   try {
     // First, upload the file
     const uploadResult = await UploadFile({ file });
-    console.log('Upload result:', uploadResult);
     
     // Extract file path and URL from upload response
     const fileUrl = uploadResult.file_url;
@@ -201,7 +200,6 @@ const handleDocumentUpload = async (file) => {
       }
     });
 
-    console.log('Extract result:', extractResult);
 
     if (extractResult.status === "success" && extractResult.output) {
       processParsedData(extractResult.output);

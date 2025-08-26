@@ -54,7 +54,6 @@ const handleFileUpload = async (file) => {
   try {
     // Upload the file first
     const uploadResult = await UploadFile({ file });
-    console.log('Upload result:', uploadResult);
     
     // Extract file path and URL from upload response
     const fileUrl = uploadResult.file_url;
@@ -83,7 +82,6 @@ const handleFileUpload = async (file) => {
       }
     });
 
-    console.log('Extract result:', extractResult);
 
     if (extractResult.status === "success" && extractResult.output) {
       const data = extractResult.output;

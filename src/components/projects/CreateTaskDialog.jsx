@@ -81,8 +81,6 @@ export default function CreateTaskDialog({ project, onClose, onTaskCreated }) {
         hours_estimated: parseFloat(formData.hours_estimated) || 0,
         assigned_to: formData.assigned_to || null // Handle empty assignment
       };
-
-      console.log("Creating task with data:", taskData);
       
       await Task.create(taskData);
 
