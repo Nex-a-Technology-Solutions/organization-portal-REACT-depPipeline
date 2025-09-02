@@ -32,6 +32,8 @@ import ClientProposalAcceptance from "./ClientProposalAcceptance.jsx";
 
 import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
 
+import GoogleOAuthCallback from "./GoogleOAuthCallback.jsx";
+
 const PAGES = {
     
     Dashboard: Dashboard,
@@ -112,6 +114,8 @@ function PagesContent() {
                 <Route path="/clientProposalAcceptance" element={<ClientProposalAcceptance />} />
                 
                 <Route path="/Register" element={<Register />} />
+
+                <Route path="/auth/google/callback" element={<GoogleOAuthCallback />} />
 
             </Routes>
         </Layout>

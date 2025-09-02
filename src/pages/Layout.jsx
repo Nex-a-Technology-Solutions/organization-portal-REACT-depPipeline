@@ -94,8 +94,9 @@ const navigationItems = [
   }
 ];
 
-// Define public routes that don't require authentication
+// Define routes that don't require role assignment (but may still need auth)
 const PUBLIC_ROUTES = ['/login', '/register', '/clientProposalAcceptance', '/userInviteAcceptance', '/forgot-password', '/reset-password'];
+const AUTH_ROUTES = ['/']; // Routes that need auth but should show sidebar during auth process
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
@@ -103,20 +104,27 @@ export default function Layout({ children, currentPageName }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authRequired, setAuthRequired] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   useEffect(() => {
-    // Check if current route is public
+    // Check if current route is public (no auth needed)
     const isPublicRoute = PUBLIC_ROUTES.some(route => 
       location.pathname === route || location.pathname.startsWith(route)
     );
     
+    // Check if current route is an auth route (needs auth but should show sidebar)
+    const isAuthRoute = AUTH_ROUTES.some(route => 
+      location.pathname === route || location.pathname.startsWith(route)
+    );
+    
     setAuthRequired(!isPublicRoute);
+    setShowSidebar(!isPublicRoute); // Show sidebar for all non-public routes
     
     if (isPublicRoute) {
       // For public routes, just load settings and skip user authentication
       loadSettingsOnly();
     } else {
-      // For protected routes, load user and settings
+      // For protected routes (including auth routes), load user and settings
       loadUser();
     }
   }, [location.pathname]);
@@ -137,7 +145,6 @@ export default function Layout({ children, currentPageName }) {
 
   const loadUser = async () => {
     try {
-      // Always try to load user data first to show loading screen
       // Check if we're in impersonation mode
       const isImpersonating = localStorage.getItem('is_impersonating') === 'true';
       const impersonatedUser = JSON.parse(localStorage.getItem('impersonated_user') || 'null');
@@ -148,13 +155,22 @@ export default function Layout({ children, currentPageName }) {
         // Use the impersonated user data
         userData = impersonatedUser;
       } else {
-        // Try to get the actual current user - this will show loading while we wait
+        // Try to get the actual current user
         try {
           userData = await User.me();
         } catch (userError) {
-          // If User.me() fails, then check authentication status
-          if (!User.isAuthenticated()) {
-            // Wait a moment to show loading screen even on quick auth failures
+          // If User.me() fails, check if we're on an auth route
+          const isAuthRoute = AUTH_ROUTES.some(route => 
+            location.pathname === route || location.pathname.startsWith(route)
+          );
+          
+          if (isAuthRoute) {
+            // For auth routes (like '/'), show the sidebar but with auth content
+            // Don't redirect, let the auth process complete
+            await loadSettingsOnly();
+            return;
+          } else if (!User.isAuthenticated()) {
+            // For other protected routes, handle as before
             await new Promise(resolve => setTimeout(resolve, 2000));
             setUser(null);
             setLoading(false);
@@ -176,102 +192,99 @@ export default function Layout({ children, currentPageName }) {
         // Continue even if settings fail
       }
       
-      // Replace the loadUser function's role assignment logic with this:
+      // Role assignment logic (unchanged)
+      if (!userData.access_level) {
+        let roleAssigned = false;
 
-if (!userData.access_level) {
-  let roleAssigned = false;
-
-  // 1. Check if user is an invited client
-  try {
-    const clientRecord = await Client.filter({ email: userData.email }, 1);
-    if (clientRecord && clientRecord.length > 0) {
-      const updateData = { access_level: "client" };
-      if (!isImpersonating) {
-        await User.updateMyUserData(updateData);
-        await Client.update(clientRecord[0].id, { user_id: userData.id });
-      }
-      userData = { ...userData, ...updateData };
-      roleAssigned = true;
-    }
-  } catch (clientError) {
-    console.error("Error checking client record:", clientError);
-  }
-
-  // 2. If not a client, check if user is an invited staff/admin
-  if (!roleAssigned) {
-    try {
-      const invitation = await UserInvitation.filter({ email: userData.email, status: 'pending' }, 1);
-      if (invitation && invitation.length > 0) {
-        const inv = invitation[0];
-        const updateData = {
-          access_level: inv.role,
-          phone: inv.phone || "",
-          hourly_rate: inv.hourly_rate || 0,
-          specialization: inv.specialization || ""
-        };
-        if (!isImpersonating) {
-          await User.updateMyUserData(updateData);
-          await UserInvitation.update(inv.id, { status: 'accepted' });
+        // 1. Check if user is an invited client
+        try {
+          const clientRecord = await Client.filter({ email: userData.email }, 1);
+          if (clientRecord && clientRecord.length > 0) {
+            const updateData = { access_level: "client" };
+            if (!isImpersonating) {
+              await User.updateMyUserData(updateData);
+              await Client.update(clientRecord[0].id, { user_id: userData.id });
+            }
+            userData = { ...userData, ...updateData };
+            roleAssigned = true;
+          }
+        } catch (clientError) {
+          console.error("Error checking client record:", clientError);
         }
-        userData = { ...userData, ...updateData };
-        roleAssigned = true;
-      }
-    } catch (invitationError) {
-      console.error("Error checking invitations:", invitationError);
-    }
-  }
-  
-  // 3. If no role assigned yet, check if they are the first user (admin)
-  if (!roleAssigned) {
-    try {
-      const allUsers = await User.list();
-      if (allUsers && allUsers.length === 1 && !isImpersonating) {
-        const updateData = {
-          access_level: "admin",
-          phone: "000-000-0000",
-          hourly_rate: 0,
-          specialization: "Admin"
-        };
-        await User.updateMyUserData(updateData);
-        userData = { ...userData, ...updateData };
-        roleAssigned = true;
-      }
-    } catch (userListError) {
-      console.error("Error checking user list:", userListError);
-    }
-  }
 
-  // 4. NEW: If user created account normally but no invitation, give them basic access
-  if (!roleAssigned) {
-    // Instead of logging them out, assign a default role
-    // You can change this logic based on your business requirements
-    try {
-      const updateData = {
-        access_level: "staff", // or "client" depending on your default
-        phone: "",
-        hourly_rate: 0,
-        specialization: ""
-      };
-      if (!isImpersonating) {
-        await User.updateMyUserData(updateData);
-      }
-      userData = { ...userData, ...updateData };
-      roleAssigned = true;
-    } catch (updateError) {
-      console.error("Error assigning default role:", updateError);
-    }
-  }
+        // 2. If not a client, check if user is an invited staff/admin
+        if (!roleAssigned) {
+          try {
+            const invitation = await UserInvitation.filter({ email: userData.email, status: 'pending' }, 1);
+            if (invitation && invitation.length > 0) {
+              const inv = invitation[0];
+              const updateData = {
+                access_level: inv.role,
+                phone: inv.phone || "",
+                hourly_rate: inv.hourly_rate || 0,
+                specialization: inv.specialization || ""
+              };
+              if (!isImpersonating) {
+                await User.updateMyUserData(updateData);
+                await UserInvitation.update(inv.id, { status: 'accepted' });
+              }
+              userData = { ...userData, ...updateData };
+              roleAssigned = true;
+            }
+          } catch (invitationError) {
+            console.error("Error checking invitations:", invitationError);
+          }
+        }
+        
+        // 3. If no role assigned yet, check if they are the first user (admin)
+        if (!roleAssigned) {
+          try {
+            const allUsers = await User.list();
+            if (allUsers && allUsers.length === 1 && !isImpersonating) {
+              const updateData = {
+                access_level: "admin",
+                phone: "000-000-0000",
+                hourly_rate: 0,
+                specialization: "Admin"
+              };
+              await User.updateMyUserData(updateData);
+              userData = { ...userData, ...updateData };
+              roleAssigned = true;
+            }
+          } catch (userListError) {
+            console.error("Error checking user list:", userListError);
+          }
+        }
 
-  // 5. Only logout if everything failed
-  if (!roleAssigned) {
-    if (!isImpersonating) {
-      await User.logout();
-    }
-    setUser(null);
-    setLoading(false);
-    return;
-  }
-}
+        // 4. If user created account normally but no invitation, give them basic access
+        if (!roleAssigned) {
+          try {
+            const updateData = {
+              access_level: "staff",
+              phone: "",
+              hourly_rate: 0,
+              specialization: ""
+            };
+            if (!isImpersonating) {
+              await User.updateMyUserData(updateData);
+            }
+            userData = { ...userData, ...updateData };
+            roleAssigned = true;
+          } catch (updateError) {
+            console.error("Error assigning default role:", updateError);
+          }
+        }
+
+        // 5. Only logout if everything failed
+        if (!roleAssigned) {
+          if (!isImpersonating) {
+            await User.logout();
+          }
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+      }
       
       setUser(userData);
     } catch (error) {
@@ -299,7 +312,7 @@ if (!userData.access_level) {
   const primaryColor = settings?.primary_color || "#72FD67";
   const isDarkMode = settings?.dark_mode || false;
 
-  // Dark mode styles - only change page backgrounds, keep cards and navigation unchanged
+  // Dark mode styles
   const darkModeStyles = isDarkMode ? `
     .dark-mode {
       background: #1a1a1a !important;
@@ -326,7 +339,7 @@ if (!userData.access_level) {
     }
   ` : '';
 
-  // Loading screen styles with modern loader
+  // Loading screen styles
   const loaderStyles = `
     .loader-5 {
       animation: rotate 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
@@ -424,8 +437,8 @@ if (!userData.access_level) {
     );
   }
 
-  // If this is a public route, just render the children with minimal styling
-  if (!authRequired) {
+  // If this is a public route, render without sidebar
+  if (!showSidebar) {
     return (
       <div className={`min-h-screen ${isDarkMode ? 'dark-mode' : 'bg-gradient-to-br from-[#F2F2F2] to-gray-100'}`}>
         <style>
@@ -442,8 +455,13 @@ if (!userData.access_level) {
     );
   }
 
-  // Show loading screen while authentication is being processed
-  if (authRequired && !user && !loading) {
+  // For auth routes (like '/'), show sidebar layout even during auth process
+  const isAuthRoute = AUTH_ROUTES.some(route => 
+    location.pathname === route || location.pathname.startsWith(route)
+  );
+
+  // Show loading screen while authentication is being processed (but not for auth routes)
+  if (authRequired && !user && !loading && !isAuthRoute) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center text-center p-4 ${isDarkMode ? 'dark-mode' : 'bg-gradient-to-br from-[#F2F2F2] to-gray-100'}`}>
         <style>
@@ -465,47 +483,7 @@ if (!userData.access_level) {
     );
   }
 
-  // If authentication is required but user is not logged in after all processing
-  if (authRequired && !user) {
-    return (
-      <div className={`min-h-screen flex flex-col items-center justify-center text-center p-4 ${isDarkMode ? 'dark-mode' : 'bg-gradient-to-br from-[#F2F2F2] to-gray-100'}`}>
-        <style>
-          {`
-            @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200;12..96,300;12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&display=swap');
-            * {
-              font-family: 'Bricolage Grotesque', -apple-system, BlinkMacSystemFont, sans-serif;
-            }
-            ${darkModeStyles}
-          `}
-        </style>
-        {logoUrl ? (
-          <div className="w-16 h-16 sm:w-20 sm:h-20 mb-6 flex items-center justify-center">
-            <img src={logoUrl} alt={companyName} className="max-w-full max-h-full object-contain" />
-          </div>
-        ) : (
-          <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-r from-[#1E1E1D] to-gray-800 rounded-2xl flex items-center justify-center shadow-2xl mb-6">
-            <Zap className="w-6 h-6 sm:w-8 sm:h-8 text-[#72FD67]" />
-          </div>
-        )}
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#1E1E1D] mb-3">Access Restricted</h1>
-        <p className="text-gray-600 mt-3 mb-8 max-w-md text-sm sm:text-base font-medium px-4">
-          This is an invitation-only platform. Please contact {companyName} to request access.
-        </p>
-        <div className="space-y-3">
-          <Button 
-            onClick={() => window.location.href = '/login'} 
-            className="bg-[#1E1E1D] hover:bg-gray-800 text-white text-base sm:text-lg px-6 sm:px-8 py-4 sm:py-6 rounded-xl shadow-lg hover:shadow-xl transition-all font-semibold w-full max-w-sm"
-          >
-            Sign In (Invited Users Only)
-          </Button>
-          <p className="text-xs text-gray-500">
-            If you were invited, sign in with the email address that received the invitation.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+  // Render with sidebar layout
   return (
     <SidebarProvider>
       <style>
@@ -562,7 +540,7 @@ if (!userData.access_level) {
             </SidebarContent>
 
             <SidebarFooter className="p-3 lg:p-4 border-gray-200 border-t">
-              {user && (
+              {user ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 p-2 lg:p-3 bg-[#F2F2F2] rounded-xl">
                     <div 
@@ -604,6 +582,20 @@ if (!userData.access_level) {
                     <LogOut className="w-4 h-4" />
                     <span className="hidden lg:inline">Sign Out</span>
                   </Button>
+                </div>
+              ) : (
+                // Show auth prompt in sidebar footer when no user
+                <div className="space-y-3">
+                  <div className="text-center p-3 bg-[#F2F2F2] rounded-xl">
+                    <p className="text-sm text-gray-600 mb-2">Signing you in, please be patient ...</p>
+                    <Button
+                      onClick={() => window.location.href = '/login'}
+                      size="sm"
+                      className="w-full bg-[#1E1E1D] hover:bg-gray-800 text-white"
+                    >
+                      Sign In
+                    </Button>
+                  </div>
                 </div>
               )}
             </SidebarFooter>

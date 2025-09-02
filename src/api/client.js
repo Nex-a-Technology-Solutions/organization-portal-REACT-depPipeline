@@ -282,7 +282,81 @@ export const auth = {
 
   getToken() {
     return getAccessToken();
-  }
+  },
+
+  async googleLogin(authorizationCode) {
+    try {
+    console.log('Sending authorization code to backend:', authorizationCode);
+    
+    // CORRECT: Send 'code' to match backend expectation
+    const response = await apiClient.post('/auth/google/', { 
+      code: authorizationCode,
+      grant_type: 'authorization_code',
+      redirect_uri: window.location.origin + '/auth/google/callback' 
+    });
+      
+      const { access, refresh } = response.data;
+      setTokens(access, refresh);
+      return response.data;
+    } catch (error) {
+      console.error('Google login error:', error.response?.data);
+      throw error.response?.data || error;
+    }
+  },
+
+  async microsoftLogin(token) {
+    try {
+      const response = await apiClient.post('/auth/microsoft/', { token });
+      const { access, refresh } = response.data;
+      setTokens(access, refresh);
+      return response.data;
+    } catch (error) {
+      console.error('Microsoft login error:', error.response?.data);
+      throw error.response?.data || error;
+    }
+  },
+
+  async appleLogin(identityToken, fullName = null) {
+    try {
+      const response = await apiClient.post('/auth/apple/', { 
+        identity_token: identityToken,
+        full_name: fullName 
+      });
+      const { access, refresh } = response.data;
+      setTokens(access, refresh);
+      return response.data;
+    } catch (error) {
+      console.error('Apple login error:', error.response?.data);
+      throw error.response?.data || error;
+    }
+  },
+
+  async sendPhoneOTP(phoneNumber) {
+    try {
+      const response = await apiClient.post('/auth/phone/send-otp/', { 
+        phone_number: phoneNumber 
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Send OTP error:', error.response?.data);
+      throw error.response?.data || error;
+    }
+  },
+
+  async verifyPhoneOTP(phoneNumber, otp) {
+    try {
+      const response = await apiClient.post('/auth/phone/verify/', { 
+        phone_number: phoneNumber,
+        otp: otp
+      });
+      const { access, refresh } = response.data;
+      setTokens(access, refresh);
+      return response.data;
+    } catch (error) {
+      console.error('Verify OTP error:', error.response?.data);
+      throw error.response?.data || error;
+    }
+  },
 };
 
 // Entity instances matching your base44 structure
