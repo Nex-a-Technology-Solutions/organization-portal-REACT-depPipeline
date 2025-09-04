@@ -34,6 +34,8 @@ import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-route
 
 import GoogleOAuthCallback from "./GoogleOAuthCallback.jsx";
 
+import PasswordReset from "./PasswordReset.jsx";
+
 const PAGES = {
     
     Dashboard: Dashboard,
@@ -115,7 +117,11 @@ function PagesContent() {
                 
                 <Route path="/Register" element={<Register />} />
 
+                <Route path="/forgotpassword" element={<PasswordReset />} />
+
                 <Route path="/auth/google/callback" element={<GoogleOAuthCallback />} />
+
+                <Route path="/reset-password" element={<PasswordReset />} />
 
             </Routes>
         </Layout>

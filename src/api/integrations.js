@@ -105,6 +105,17 @@ export const sendExternalEmail = async (emailData) => {
   }
 };
 
+
+export const sendPasswordReset = async (emailData) => {
+  try {
+    // Use the unauthenticated email endpoint specifically for password resets
+    const response = await djangoClient.getClient().post('/auth/send-password-reset-email/', emailData);
+    return response.data;
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+    throw error;
+  }
+};
 // Alternative: If you don't need these integrations yet, use placeholder implementations
 /*
 export const Core = {
