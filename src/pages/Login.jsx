@@ -503,7 +503,10 @@ export default function Login() {
             </form>
 
             <div className="text-center mt-4">
-              <a href="/forgot-password" className="text-sm text-blue-600 hover:underline">
+              <a
+                href="/forgotpassword"
+                className="text-sm font-medium text-[#72FD67] hover:text-green-400 transition-colors duration-200"
+              >
                 Forgot your password?
               </a>
             </div>
