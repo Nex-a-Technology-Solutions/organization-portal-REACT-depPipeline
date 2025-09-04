@@ -95,7 +95,7 @@ const navigationItems = [
 ];
 
 // Define routes that don't require role assignment (but may still need auth)
-const PUBLIC_ROUTES = ['/login', '/register', '/clientProposalAcceptance', '/userInviteAcceptance', '/forgot-password', '/reset-password'];
+const PUBLIC_ROUTES = ['/login', '/forgotpassword', '/register', '/clientProposalAcceptance', '/userInviteAcceptance', '/forgot-password', '/reset-password'];
 const AUTH_ROUTES = ['/']; // Routes that need auth but should show sidebar during auth process
 
 export default function Layout({ children, currentPageName }) {
