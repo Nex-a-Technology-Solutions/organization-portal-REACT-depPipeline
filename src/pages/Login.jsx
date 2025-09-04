@@ -510,6 +510,7 @@ export default function Login() {
                 Forgot your password?
               </a>
             </div>
+
           </CardContent>
         </Card>
       </div>
