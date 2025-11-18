@@ -290,7 +290,7 @@ setShowEmailPreview(true);
 
       // Update proposal status
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://organization-portal-deppipeline.onrender.com/api'}/proposals/${proposalId}/send_proposal/`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://nexa-autolabstudios-enterprise-api.fly.dev/api'}/proposals/${proposalId}/send_proposal/`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

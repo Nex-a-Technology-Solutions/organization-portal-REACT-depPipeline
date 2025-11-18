@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 // Configure your Django API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://organization-portal-deppipeline.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://nexa-autolabstudios-enterprise-api.fly.dev/api';
 
 // Create axios instance
 const apiClient = axios.create({
